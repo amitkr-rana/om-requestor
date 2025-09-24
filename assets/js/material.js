@@ -1,5 +1,5 @@
 // Material Design 3 JavaScript Components
-// Custom implementation for OM Requestor
+// Custom implementation for Om Engineers
 
 class MaterialComponents {
     static init() {

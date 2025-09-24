@@ -35,7 +35,7 @@ class EmailService {
             'Content-Type: text/html; charset=UTF-8',
             'From: ' . $this->from_name . ' <' . $this->from_email . '>',
             'Reply-To: ' . $this->from_email,
-            'X-Mailer: OM Requestor System'
+            'X-Mailer: Om Engineers System'
         ];
 
         // Send email
@@ -155,7 +155,7 @@ class EmailService {
         </head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
             <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-                <h1 style="margin: 0; font-size: 28px;">OM Engineers</h1>
+                <h1 style="margin: 0; font-size: 28px;">Om Engineers</h1>
                 <p style="margin: 10px 0 0 0; opacity: 0.9;">Vehicle Maintenance System</p>
             </div>
 
@@ -183,7 +183,7 @@ class EmailService {
             </div>
 
             <div style="text-align: center; padding: 20px; color: #666; font-size: 12px;">
-                <p>© ' . date('Y') . ' OM Engineers. All rights reserved.</p>
+                <p>© ' . date('Y') . ' Om Engineers. All rights reserved.</p>
                 <p>This is an automated message from the Vehicle Maintenance System.</p>
             </div>
         </body>
@@ -201,7 +201,7 @@ class EmailService {
         </head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
             <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-                <h1 style="margin: 0; font-size: 28px;">OM Engineers</h1>
+                <h1 style="margin: 0; font-size: 28px;">Om Engineers</h1>
                 <p style="margin: 10px 0 0 0; opacity: 0.9;">Vehicle Maintenance System</p>
             </div>
 
@@ -230,7 +230,7 @@ class EmailService {
             </div>
 
             <div style="text-align: center; padding: 20px; color: #666; font-size: 12px;">
-                <p>© ' . date('Y') . ' OM Engineers. All rights reserved.</p>
+                <p>© ' . date('Y') . ' Om Engineers. All rights reserved.</p>
                 <p>This is an automated message from the Vehicle Maintenance System.</p>
             </div>
         </body>
@@ -248,7 +248,7 @@ class EmailService {
         </head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
             <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-                <h1 style="margin: 0; font-size: 28px;">OM Engineers</h1>
+                <h1 style="margin: 0; font-size: 28px;">Om Engineers</h1>
                 <p style="margin: 10px 0 0 0; opacity: 0.9;">Vehicle Maintenance System</p>
             </div>
 
@@ -280,7 +280,7 @@ class EmailService {
             </div>
 
             <div style="text-align: center; padding: 20px; color: #666; font-size: 12px;">
-                <p>© ' . date('Y') . ' OM Engineers. All rights reserved.</p>
+                <p>© ' . date('Y') . ' Om Engineers. All rights reserved.</p>
                 <p>This is an automated message from the Vehicle Maintenance System.</p>
             </div>
         </body>
@@ -298,7 +298,7 @@ class EmailService {
         </head>
         <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
             <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-                <h1 style="margin: 0; font-size: 28px;">OM Engineers</h1>
+                <h1 style="margin: 0; font-size: 28px;">Om Engineers</h1>
                 <p style="margin: 10px 0 0 0; opacity: 0.9;">Vehicle Maintenance System</p>
             </div>
 
@@ -325,12 +325,12 @@ class EmailService {
                 </div>
 
                 <p style="color: #666; font-size: 14px; margin-top: 30px;">
-                    Thank you for choosing OM Engineers for your vehicle maintenance needs.
+                    Thank you for choosing Om Engineers for your vehicle maintenance needs.
                 </p>
             </div>
 
             <div style="text-align: center; padding: 20px; color: #666; font-size: 12px;">
-                <p>© ' . date('Y') . ' OM Engineers. All rights reserved.</p>
+                <p>© ' . date('Y') . ' Om Engineers. All rights reserved.</p>
                 <p>This is an automated message from the Vehicle Maintenance System.</p>
             </div>
         </body>

@@ -1,11 +1,11 @@
-# OM Requestor - Vehicle Maintenance Management System
+# Om Engineers - Vehicle Maintenance Management System
 
-A comprehensive web-based vehicle maintenance quotation and approval system built for OM Engineers and Sammaan Foundation.
+A comprehensive web-based vehicle maintenance quotation and approval system built for Om Engineers and Sammaan Foundation.
 
 ## Features
 
 ### 🎯 Role-Based Access Control
-- **Admin (OM Engineers)**: Complete system management, user creation, quotation generation
+- **Admin (Om Engineers)**: Complete system management, user creation, quotation generation
 - **Requestor**: Vehicle registration and service request submission
 - **Approver**: Quotation review and approval workflow
 
@@ -137,7 +137,7 @@ om-requestor/
 
 ## Usage
 
-### For Administrators (OM Engineers)
+### For Administrators (Om Engineers)
 1. Login with admin credentials
 2. Create user accounts for requestors and approvers
 3. View and manage all service requests
@@ -226,14 +226,14 @@ om-requestor/
 
 For technical support or feature requests:
 - Email: admin@om-engineers.org
-- Organization: OM Engineers / Sammaan Foundation
+- Organization: Om Engineers / Sammaan Foundation
 
 ## License
 
-This system is proprietary software developed specifically for OM Engineers and Sammaan Foundation vehicle maintenance operations.
+This system is proprietary software developed specifically for Om Engineers and Sammaan Foundation vehicle maintenance operations.
 
 ---
 
 **Version**: 1.0.0
 **Last Updated**: November 2024
-**Developed by**: Claude Code for OM Engineers
+**Developed by**: Claude Code for Om Engineers

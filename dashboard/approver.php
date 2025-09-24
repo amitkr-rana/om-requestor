@@ -55,7 +55,9 @@ $recentDecisions = $db->fetchAll(
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <link href="../assets/css/material.css" rel="stylesheet">
-    <link href="../assets/css/style.css" rel="stylesheet">
+    <link href="../assets/css/style-base.css" rel="stylesheet">
+    <link href="../assets/css/style-desktop.css" rel="stylesheet" media="(min-width: 769px)">
+    <link href="../assets/css/style-mobile.css" rel="stylesheet" media="(max-width: 768px)">
 </head>
 <body>
     <div class="dashboard-layout">

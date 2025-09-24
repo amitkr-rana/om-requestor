@@ -8,7 +8,7 @@ define('DB_USER', 'root');
 define('DB_PASS', '');
 
 // Application settings
-define('APP_NAME', 'OM Requestor');
+define('APP_NAME', 'Om Engineers');
 define('APP_VERSION', '1.0.0');
 
 // Dynamic base URL detection
@@ -34,7 +34,7 @@ define('SMTP_PORT', 587);
 define('SMTP_USERNAME', 'admin@om-engineers.org');
 define('SMTP_PASSWORD', ''); // Set your email password here
 define('FROM_EMAIL', 'admin@om-engineers.org');
-define('FROM_NAME', 'OM Engineers');
+define('FROM_NAME', 'Om Engineers');
 
 // Session configuration
 define('SESSION_LIFETIME', 3600); // 1 hour in seconds

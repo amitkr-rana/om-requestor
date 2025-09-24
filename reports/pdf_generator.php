@@ -69,13 +69,13 @@ class SimplePDF {
         </head>
         <body>
             <div class='header'>
-                <div class='logo'>OM Engineers</div>
+                <div class='logo'>Om Engineers</div>
                 <div class='report-title'>{$this->title}</div>
                 <div class='report-date'>Generated on " . date('F j, Y \a\t g:i A') . "</div>
             </div>
             {$this->content}
             <div class='footer'>
-                <p>© " . date('Y') . " OM Engineers - Sammaan Foundation Vehicle Maintenance System</p>
+                <p>© " . date('Y') . " Om Engineers - Sammaan Foundation Vehicle Maintenance System</p>
             </div>
         </body>
         </html>";
@@ -112,13 +112,13 @@ class SimplePDF {
         </head>
         <body>
             <div class='header'>
-                <div class='logo'>OM Engineers</div>
+                <div class='logo'>Om Engineers</div>
                 <div class='report-title'>{$this->title}</div>
                 <div class='report-date'>Generated on " . date('F j, Y \a\t g:i A') . "</div>
             </div>
             {$this->content}
             <div class='footer'>
-                <p>© " . date('Y') . " OM Engineers - Sammaan Foundation Vehicle Maintenance System</p>
+                <p>© " . date('Y') . " Om Engineers - Sammaan Foundation Vehicle Maintenance System</p>
             </div>
             <div class='no-print' style='position: fixed; top: 20px; right: 20px;'>
                 <button onclick='window.print()' style='padding: 10px 20px; background: #1976D2; color: white; border: none; border-radius: 5px; cursor: pointer;'>Print</button>

@@ -1,4 +1,4 @@
-// Main JavaScript file for OM Requestor
+// Main JavaScript file for Om Engineers
 // Application-specific functionality
 
 class OMRequestor {
