@@ -51,8 +51,12 @@ if (isLoggedIn()) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo APP_NAME; ?> - Login</title>
+
+    <!-- CRITICAL: Load theme detection BEFORE any CSS to prevent FOUC -->
+    <script src="assets/js/theme-detection.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link href="assets/css/dark-mode.css" rel="stylesheet">
     <link href="assets/css/material.css" rel="stylesheet">
     <link href="assets/css/style-base.css" rel="stylesheet">
     <link href="assets/css/style-desktop.css" rel="stylesheet" media="(min-width: 769px)">
@@ -69,6 +73,9 @@ if (isLoggedIn()) {
                 <h2 class="brand-name">Om Engineers</h2>
             </div>
             <nav class="header-nav">
+                <button id="darkModeToggle" class="dark-mode-toggle" title="Toggle dark mode">
+                    <span class="material-icons icon" id="darkModeIcon">dark_mode</span>
+                </button>
             </nav>
         </div>
     </header>
@@ -163,5 +170,48 @@ if (isLoggedIn()) {
 
     <script src="assets/js/material.js"></script>
     <script src="assets/js/main.js"></script>
+    <script>
+        // Dark mode functionality for login page using ThemeManager
+        document.addEventListener('DOMContentLoaded', function() {
+            const darkModeToggle = document.getElementById('darkModeToggle');
+            const darkModeIcon = document.getElementById('darkModeIcon');
+
+            // Initialize with current theme
+            updateToggleButton(window.ThemeManager.getCurrentTheme());
+
+            // Toggle dark mode
+            if (darkModeToggle) {
+                darkModeToggle.addEventListener('click', function() {
+                    const newTheme = window.ThemeManager.toggleTheme();
+                    updateToggleButton(newTheme);
+
+                    // Visual feedback
+                    darkModeToggle.style.transform = 'scale(0.9)';
+                    setTimeout(() => {
+                        darkModeToggle.style.transform = '';
+                    }, 150);
+                });
+            }
+
+            // Listen for theme changes
+            document.addEventListener('themeChanged', function(e) {
+                updateToggleButton(e.detail.theme);
+            });
+
+            function updateToggleButton(theme) {
+                if (darkModeIcon && darkModeToggle) {
+                    if (theme === 'dark') {
+                        darkModeIcon.textContent = 'light_mode';
+                        darkModeToggle.title = 'Switch to light mode';
+                        darkModeToggle.setAttribute('aria-label', 'Switch to light mode');
+                    } else {
+                        darkModeIcon.textContent = 'dark_mode';
+                        darkModeToggle.title = 'Switch to dark mode';
+                        darkModeToggle.setAttribute('aria-label', 'Switch to dark mode');
+                    }
+                }
+            }
+        });
+    </script>
 </body>
 </html>

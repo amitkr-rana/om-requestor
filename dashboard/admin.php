@@ -3,16 +3,32 @@ require_once '../includes/functions.php';
 
 requireRole('admin');
 
-// Get dashboard statistics
+// Get dashboard statistics - filter by current organization context via users table
+$orgJoin = '';
+$orgFilter = '';
+$orgParams = [];
+if ($_SESSION['organization_id'] != 2) { // If not Om Engineers admin
+    $orgJoin = ' JOIN users u ON sr.user_id = u.id';
+    $orgFilter = ' AND u.organization_id = ?';
+    $orgParams = [$_SESSION['organization_id']];
+}
+
+// Get dashboard statistics with safe array access
+$newQuotationRequestsResult = $db->fetch("SELECT COUNT(*) as count FROM service_requests sr {$orgJoin} WHERE sr.status = 'pending' {$orgFilter}", $orgParams);
+$quotationsSentResult = $db->fetch("SELECT COUNT(*) as count FROM quotations q JOIN service_requests sr ON q.request_id = sr.id {$orgJoin} WHERE q.status = 'sent' {$orgFilter}", $orgParams);
+$approvedQuotationsResult = $db->fetch("SELECT COUNT(*) as count FROM quotations q JOIN service_requests sr ON q.request_id = sr.id {$orgJoin} WHERE q.status = 'approved' {$orgFilter}", $orgParams);
+$completedRepairsResult = $db->fetch("SELECT COUNT(*) as count FROM service_requests sr {$orgJoin} WHERE sr.status = 'completed' {$orgFilter}", $orgParams);
+$billsGeneratedResult = $db->fetch("SELECT COUNT(*) as count FROM quotations q JOIN service_requests sr ON q.request_id = sr.id {$orgJoin} WHERE q.status = 'approved' {$orgFilter}", $orgParams);
+
 $stats = [
-    'new_quotation_requests' => $db->fetch("SELECT COUNT(*) as count FROM service_requests WHERE status = 'pending'")['count'],
-    'quotations_sent' => $db->fetch("SELECT COUNT(*) as count FROM quotations WHERE status = 'sent'")['count'],
-    'approved_quotations' => $db->fetch("SELECT COUNT(*) as count FROM quotations WHERE status = 'approved'")['count'],
-    'completed_repairs' => $db->fetch("SELECT COUNT(*) as count FROM service_requests WHERE status = 'completed'")['count'],
-    'bills_generated' => $db->fetch("SELECT COUNT(*) as count FROM quotations WHERE status = 'approved'")['count']
+    'new_quotation_requests' => $newQuotationRequestsResult ? $newQuotationRequestsResult['count'] : 0,
+    'quotations_sent' => $quotationsSentResult ? $quotationsSentResult['count'] : 0,
+    'approved_quotations' => $approvedQuotationsResult ? $approvedQuotationsResult['count'] : 0,
+    'completed_repairs' => $completedRepairsResult ? $completedRepairsResult['count'] : 0,
+    'bills_generated' => $billsGeneratedResult ? $billsGeneratedResult['count'] : 0
 ];
 
-// Get recent activities
+// Get recent activities - filter by organization
 $recentActivities = $db->fetchAll(
     "SELECT sr.id, sr.problem_description, sr.status, sr.created_at,
             v.registration_number, u.full_name as requestor_name,
@@ -20,121 +36,32 @@ $recentActivities = $db->fetchAll(
      FROM service_requests sr
      JOIN vehicles v ON sr.vehicle_id = v.id
      JOIN users u ON sr.user_id = u.id
+     WHERE 1=1 {$orgFilter}
      ORDER BY sr.created_at DESC
-     LIMIT 8"
+     LIMIT 8",
+    $orgParams
 );
 
-// Get organization name
-$organizationName = $db->fetch("SELECT name FROM organizations LIMIT 1")['name'] ?? 'Organization';
+$pageTitle = 'Dashboard';
+include '../includes/admin_head.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard - <?php echo APP_NAME; ?></title>
-    <link rel="preconnect" href="https://fonts.gstatic.com/" crossorigin="" />
-    <link
-      rel="stylesheet"
-      as="style"
-      onload="this.rel='stylesheet'"
-      href="https://fonts.googleapis.com/css2?display=swap&amp;family=Inter%3Awght%40400%3B500%3B700%3B900&amp;family=Noto+Sans%3Awght%40400%3B500%3B700%3B900"
-    />
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        'blue': {
-                            50: '#eff6ff',
-                            100: '#dbeafe',
-                            500: '#3b82f6',
-                            600: '#2563eb',
-                            700: '#1d4ed8',
-                        }
-                    }
-                }
-            }
-        }
-    </script>
-</head>
-<body>
-    <div class="relative flex h-screen w-full flex-col bg-blue-50 group/design-root overflow-hidden" style='font-family: Inter, "Noto Sans", sans-serif;'>
-        <div class="layout-container flex h-full grow flex-col">
-            <div class="flex flex-1 h-full">
-                <div class="layout-content-container flex flex-col w-80 bg-white border-r border-blue-100">
-                    <div class="flex h-full flex-col justify-between p-6">
-                        <div class="flex flex-col gap-6">
-                            <div class="flex items-center gap-3">
-                                <div class="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center">
-                                    <span class="material-icons text-white text-xl">engineering</span>
-                                </div>
-                                <h1 class="text-blue-900 text-lg font-semibold leading-normal"><?php echo APP_NAME; ?></h1>
-                            </div>
-                            <div class="flex flex-col gap-2">
-                                <a href="admin.php" class="flex items-center gap-3 px-4 py-3 rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors">
-                                    <span class="material-icons text-xl">dashboard</span>
-                                    <p class="text-sm font-medium leading-normal">Dashboard</p>
-                                </a>
-                                <a href="users.php" class="flex items-center gap-3 px-4 py-3 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors">
-                                    <span class="material-icons text-xl">group</span>
-                                    <p class="text-sm font-medium leading-normal">Users</p>
-                                </a>
-                                <a href="quotations.php" class="flex items-center gap-3 px-4 py-3 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors">
-                                    <span class="material-icons text-xl">receipt</span>
-                                    <p class="text-sm font-medium leading-normal">Quotations</p>
-                                </a>
-                                <a href="vehicles.php" class="flex items-center gap-3 px-4 py-3 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors">
-                                    <span class="material-icons text-xl">directions_car</span>
-                                    <p class="text-sm font-medium leading-normal">Vehicles</p>
-                                </a>
-                                <a href="reports.php" class="flex items-center gap-3 px-4 py-3 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors">
-                                    <span class="material-icons text-xl">assessment</span>
-                                    <p class="text-sm font-medium leading-normal">Reports</p>
-                                </a>
-                            </div>
-                        </div>
-                        <div class="border-t border-blue-100 pt-4">
-                            <div class="flex items-center gap-3 mb-4">
-                                <div class="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center">
-                                    <span class="material-icons text-white text-lg">security</span>
-                                </div>
-                                <div>
-                                    <p class="text-blue-900 text-sm font-medium"><?php echo htmlspecialchars($_SESSION['full_name']); ?></p>
-                                    <p class="text-blue-600 text-xs"><?php echo ucfirst($_SESSION['role']); ?></p>
-                                </div>
-                            </div>
-                            <a href="../api/auth.php?action=logout" class="flex items-center gap-3 px-4 py-3 rounded-lg text-red-600 hover:bg-red-50 transition-colors w-full">
-                                <span class="material-icons text-xl">logout</span>
-                                <p class="text-sm font-medium leading-normal">Logout</p>
-                            </a>
-                        </div>
-                    </div>
-                </div>
+<?php include '../includes/admin_sidebar.php'; ?>
                 <div class="layout-content-container flex flex-col flex-1 overflow-y-auto">
-                    <!-- Dashboard Header -->
-                    <div class="flex justify-between items-center p-6 bg-white border-b border-blue-100">
-                        <h1 class="text-blue-900 text-3xl font-bold">Dashboard</h1>
-                        <div class="text-blue-600 text-sm font-medium">
-                            <?php echo htmlspecialchars($organizationName); ?>
-                        </div>
-                    </div>
+                    <?php include '../includes/admin_header.php'; ?>
 
                     <!-- Metrics Cards -->
                     <div class="p-6">
                         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-8">
-                            <div class="bg-white rounded-lg p-6 border border-blue-100 hover:shadow-lg transition-shadow">
+                            <a href="quotations.php?status=pending" class="block bg-white rounded-lg p-6 border border-blue-100 hover:shadow-lg hover:border-blue-200 transition-all cursor-pointer">
                                 <div class="flex items-center gap-3 mb-2">
                                     <div class="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
                                         <span class="material-icons text-blue-600 text-sm">assignment</span>
                                     </div>
                                 </div>
-                                <p class="text-blue-900 text-sm font-medium mb-1">New Quotation Requests</p>
+                                <p class="text-blue-900 text-sm font-medium mb-1">Pending Quotation Requests</p>
                                 <p class="text-blue-900 text-2xl font-bold"><?php echo $stats['new_quotation_requests']; ?></p>
-                            </div>
-                            <div class="bg-white rounded-lg p-6 border border-blue-100 hover:shadow-lg transition-shadow">
+                            </a>
+                            <a href="quotations.php?status=sent" class="block bg-white rounded-lg p-6 border border-blue-100 hover:shadow-lg hover:border-blue-200 transition-all cursor-pointer">
                                 <div class="flex items-center gap-3 mb-2">
                                     <div class="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
                                         <span class="material-icons text-blue-600 text-sm">send</span>
@@ -142,8 +69,8 @@ $organizationName = $db->fetch("SELECT name FROM organizations LIMIT 1")['name']
                                 </div>
                                 <p class="text-blue-900 text-sm font-medium mb-1">Quotations Sent</p>
                                 <p class="text-blue-900 text-2xl font-bold"><?php echo $stats['quotations_sent']; ?></p>
-                            </div>
-                            <div class="bg-white rounded-lg p-6 border border-blue-100 hover:shadow-lg transition-shadow">
+                            </a>
+                            <a href="quotations.php?status=approved" class="block bg-white rounded-lg p-6 border border-blue-100 hover:shadow-lg hover:border-blue-200 transition-all cursor-pointer">
                                 <div class="flex items-center gap-3 mb-2">
                                     <div class="w-8 h-8 rounded bg-green-100 flex items-center justify-center">
                                         <span class="material-icons text-green-600 text-sm">check_circle</span>
@@ -151,7 +78,7 @@ $organizationName = $db->fetch("SELECT name FROM organizations LIMIT 1")['name']
                                 </div>
                                 <p class="text-blue-900 text-sm font-medium mb-1">Approved Quotations</p>
                                 <p class="text-blue-900 text-2xl font-bold"><?php echo $stats['approved_quotations']; ?></p>
-                            </div>
+                            </a>
                             <div class="bg-white rounded-lg p-6 border border-blue-100 hover:shadow-lg transition-shadow">
                                 <div class="flex items-center gap-3 mb-2">
                                     <div class="w-8 h-8 rounded bg-green-100 flex items-center justify-center">

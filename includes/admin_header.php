@@ -1,0 +1,178 @@
+<?php
+// Admin header component
+// Expects $pageTitle to be set before including this file
+
+// Get current organization info
+$currentOrgId = $_SESSION['organization_id'] ?? 0;
+if ($currentOrgId == 2) {
+    $currentOrgName = 'Om Engineers';
+} else {
+    $currentOrg = $db->fetch("SELECT name FROM organizations WHERE id = ?", [$currentOrgId]);
+    $currentOrgName = $currentOrg['name'] ?? 'Organization';
+}
+
+// Get all organizations for dropdown (only for admins, exclude Om Engineers)
+$allOrganizations = [];
+if ($_SESSION['role'] === 'admin') {
+    $allOrganizations = $db->fetchAll("SELECT id, name FROM organizations WHERE id != 2 ORDER BY name");
+}
+?>
+<div class="flex justify-between items-center p-6 bg-white border-b border-blue-100">
+    <h1 class="text-blue-900 text-3xl font-bold"><?php echo htmlspecialchars($pageTitle ?? 'Dashboard'); ?></h1>
+
+    <div class="flex items-center gap-4">
+        <!-- Dark Mode Toggle -->
+        <button id="darkModeToggle" class="dark-mode-toggle" title="Toggle dark mode">
+            <span class="material-icons icon" id="darkModeIcon">dark_mode</span>
+        </button>
+
+        <?php if ($_SESSION['role'] === 'admin' && count($allOrganizations) > 0): ?>
+        <!-- Organization Switcher for Admins -->
+        <div class="flex items-center gap-3">
+            <span class="text-blue-600 text-sm font-medium">Organization:</span>
+            <div class="relative">
+                <select id="orgSwitcher" class="bg-white border border-blue-200 rounded-lg px-3 py-2 text-sm font-medium text-blue-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
+                    <?php if ($currentOrgId == 2): ?>
+                        <!-- Show current selection as Om Engineers if currently selected -->
+                        <option value="2" selected class="text-red-600 font-medium">
+                            Om Engineers (System Admin)
+                        </option>
+                    <?php endif; ?>
+                    <!-- Regular Organizations -->
+                    <?php foreach ($allOrganizations as $org): ?>
+                        <option value="<?php echo $org['id']; ?>" <?php echo $currentOrgId == $org['id'] ? 'selected' : ''; ?>>
+                            <?php echo htmlspecialchars($org['name']); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+                <div class="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+                    <span class="material-icons text-blue-400 text-sm">expand_more</span>
+                </div>
+            </div>
+            <!-- Current Organization Display -->
+            <div class="flex items-center gap-2">
+                <span class="px-2 py-1 rounded text-xs font-medium <?php echo $currentOrgId == 2 ? 'bg-red-100 text-red-800 border border-red-200 om-engineers-badge' : 'bg-blue-100 text-blue-800'; ?>">
+                    <?php echo htmlspecialchars($currentOrgName); ?>
+                    <?php if ($currentOrgId == 2): ?>
+                        <span class="ml-1 text-red-600">⚡</span>
+                    <?php endif; ?>
+                </span>
+            </div>
+        </div>
+        <?php elseif ($_SESSION['role'] === 'admin'): ?>
+        <!-- Admin with no switchable organizations -->
+        <div class="text-blue-600 text-sm font-medium">
+            <?php echo htmlspecialchars($currentOrgName); ?>
+        </div>
+        <?php else: ?>
+        <!-- Regular Organization Display -->
+        <div class="text-blue-600 text-sm font-medium">
+            <?php echo htmlspecialchars($currentOrgName); ?>
+        </div>
+        <?php endif; ?>
+    </div>
+</div>
+
+<?php if ($_SESSION['role'] === 'admin'): ?>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize dark mode
+    initializeDarkMode();
+
+    // Organization switcher
+    const orgSwitcher = document.getElementById('orgSwitcher');
+
+    if (orgSwitcher) {
+        orgSwitcher.addEventListener('change', function() {
+            const selectedOrgId = this.value;
+            const currentOrgId = <?php echo json_encode($currentOrgId); ?>;
+
+            if (selectedOrgId != currentOrgId) {
+                if (confirm('Switch to this organization? This will refresh the page and update all data views.')) {
+                    // Send AJAX request to switch organization
+                    switchOrganization(selectedOrgId);
+                } else {
+                    // Reset to current organization if user cancels
+                    this.value = currentOrgId;
+                }
+            }
+        });
+    }
+});
+
+// Dark mode functionality using ThemeManager
+function initializeDarkMode() {
+    const darkModeToggle = document.getElementById('darkModeToggle');
+    const darkModeIcon = document.getElementById('darkModeIcon');
+
+    // Initialize with current theme
+    updateToggleButton(window.ThemeManager.getCurrentTheme());
+
+    // Toggle dark mode
+    if (darkModeToggle) {
+        darkModeToggle.addEventListener('click', function() {
+            const newTheme = window.ThemeManager.toggleTheme();
+            updateToggleButton(newTheme);
+
+            // Smooth visual feedback
+            darkModeToggle.style.transform = 'scale(0.9)';
+            setTimeout(() => {
+                darkModeToggle.style.transform = '';
+            }, 150);
+        });
+    }
+
+    // Listen for theme changes from other sources
+    document.addEventListener('themeChanged', function(e) {
+        updateToggleButton(e.detail.theme);
+    });
+
+    function updateToggleButton(theme) {
+        if (darkModeIcon && darkModeToggle) {
+            if (theme === 'dark') {
+                darkModeIcon.textContent = 'light_mode';
+                darkModeToggle.title = 'Switch to light mode';
+                darkModeToggle.setAttribute('aria-label', 'Switch to light mode');
+            } else {
+                darkModeIcon.textContent = 'dark_mode';
+                darkModeToggle.title = 'Switch to dark mode';
+                darkModeToggle.setAttribute('aria-label', 'Switch to dark mode');
+            }
+        }
+    }
+}
+
+async function switchOrganization(orgId) {
+    try {
+        const formData = new FormData();
+        formData.append('action', 'switch_organization');
+        formData.append('organization_id', orgId);
+        formData.append('csrf_token', '<?php echo generateCSRFToken(); ?>');
+
+        const response = await fetch('../api/admin.php', {
+            method: 'POST',
+            body: formData
+        });
+
+        // Check if response is ok
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        if (result.success) {
+            // Show success message briefly before reload
+            console.log('Successfully switched to: ' + result.organization_name);
+            // Reload current page to show new organization context
+            window.location.reload();
+        } else {
+            alert(result.error || 'Failed to switch organization');
+        }
+    } catch (error) {
+        console.error('Organization switching error:', error);
+        alert('Network error occurred while switching organization: ' + error.message);
+    }
+}
+</script>
+<?php endif; ?>

@@ -1,0 +1,354 @@
+/* Dark Mode CSS for Om Engineers - Vehicle Maintenance System */
+
+:root {
+  /* Light mode colors (default) */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8fafc;
+  --bg-tertiary: #f1f5f9;
+  --bg-card: #ffffff;
+  --bg-sidebar: #ffffff;
+  --bg-header: #ffffff;
+  --bg-modal: #ffffff;
+  --bg-input: #ffffff;
+  --bg-button: #3b82f6;
+  --bg-button-hover: #2563eb;
+  --bg-success: #10b981;
+  --bg-warning: #f59e0b;
+  --bg-error: #ef4444;
+  --bg-info: #06b6d4;
+
+  /* Text colors */
+  --text-primary: #1e293b;
+  --text-secondary: #64748b;
+  --text-tertiary: #94a3b8;
+  --text-inverse: #ffffff;
+  --text-blue: #3b82f6;
+  --text-success: #059669;
+  --text-warning: #d97706;
+  --text-error: #dc2626;
+
+  /* Border colors */
+  --border-primary: #e2e8f0;
+  --border-secondary: #cbd5e1;
+  --border-blue: #bfdbfe;
+  --border-focus: #3b82f6;
+
+  /* Shadow colors */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+  /* Status colors */
+  --status-active: #22c55e;
+  --status-inactive: #ef4444;
+  --status-pending: #f59e0b;
+  --status-approved: #10b981;
+}
+
+/* Dark mode colors */
+[data-theme="dark"] {
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-tertiary: #334155;
+  --bg-card: #1e293b;
+  --bg-sidebar: #1e293b;
+  --bg-header: #1e293b;
+  --bg-modal: #1e293b;
+  --bg-input: #334155;
+  --bg-button: #3b82f6;
+  --bg-button-hover: #2563eb;
+  --bg-success: #10b981;
+  --bg-warning: #f59e0b;
+  --bg-error: #ef4444;
+  --bg-info: #06b6d4;
+
+  /* Text colors */
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-tertiary: #94a3b8;
+  --text-inverse: #0f172a;
+  --text-blue: #60a5fa;
+  --text-success: #34d399;
+  --text-warning: #fbbf24;
+  --text-error: #f87171;
+
+  /* Border colors */
+  --border-primary: #475569;
+  --border-secondary: #64748b;
+  --border-blue: #3b82f6;
+  --border-focus: #60a5fa;
+
+  /* Shadow colors */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+
+  /* Status colors (slightly adjusted for dark mode) */
+  --status-active: #34d399;
+  --status-inactive: #f87171;
+  --status-pending: #fbbf24;
+  --status-approved: #34d399;
+}
+
+/* Base styles using CSS variables */
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Card styles */
+.card, .bg-white {
+  background-color: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-primary) !important;
+}
+
+/* Input styles */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+select,
+textarea {
+  background-color: var(--bg-input) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-primary) !important;
+}
+
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+input[type="number"]:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--border-focus) !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+}
+
+/* Button styles */
+.btn-primary, .bg-blue-600 {
+  background-color: var(--bg-button) !important;
+  color: var(--text-inverse) !important;
+}
+
+.btn-primary:hover, .bg-blue-600:hover, .hover\:bg-blue-700:hover {
+  background-color: var(--bg-button-hover) !important;
+}
+
+/* Text colors */
+.text-blue-900 {
+  color: var(--text-primary) !important;
+}
+
+.text-blue-600, .text-blue-700 {
+  color: var(--text-blue) !important;
+}
+
+.text-gray-600, .text-gray-700 {
+  color: var(--text-secondary) !important;
+}
+
+.text-gray-400, .text-gray-500 {
+  color: var(--text-tertiary) !important;
+}
+
+/* Background colors */
+.bg-gray-50, .bg-blue-50 {
+  background-color: var(--bg-secondary) !important;
+}
+
+.bg-gray-100, .bg-blue-100 {
+  background-color: var(--bg-tertiary) !important;
+}
+
+/* Border colors */
+.border-blue-100, .border-gray-200 {
+  border-color: var(--border-primary) !important;
+}
+
+.border-blue-200 {
+  border-color: var(--border-blue) !important;
+}
+
+/* Status badge colors */
+.status-active, .bg-green-100 {
+  background-color: var(--status-active) !important;
+  color: var(--text-inverse) !important;
+}
+
+.status-inactive, .bg-red-100 {
+  background-color: var(--status-inactive) !important;
+  color: var(--text-inverse) !important;
+}
+
+.status-pending, .bg-yellow-100 {
+  background-color: var(--status-pending) !important;
+  color: var(--text-inverse) !important;
+}
+
+/* Table styles */
+table {
+  background-color: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+}
+
+thead {
+  background-color: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+}
+
+tbody tr {
+  color: var(--text-primary) !important;
+}
+
+tbody tr:hover {
+  background-color: var(--bg-secondary) !important;
+}
+
+th, td {
+  border-color: var(--border-primary) !important;
+}
+
+/* Modal styles */
+.modal {
+  background-color: var(--bg-modal) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Sidebar styles */
+.sidebar, .layout-content-container {
+  background-color: var(--bg-sidebar) !important;
+  border-color: var(--border-primary) !important;
+}
+
+/* Navigation links */
+.sidebar a, nav a {
+  color: var(--text-primary) !important;
+}
+
+.sidebar a:hover, nav a:hover {
+  background-color: var(--bg-tertiary) !important;
+}
+
+/* Header styles */
+.header {
+  background-color: var(--bg-header) !important;
+  border-color: var(--border-primary) !important;
+}
+
+/* Layout containers */
+.layout-container {
+  background-color: var(--bg-primary) !important;
+}
+
+/* Dark mode toggle button styles */
+.dark-mode-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.dark-mode-toggle:hover {
+  background-color: var(--bg-button);
+  color: var(--text-inverse);
+}
+
+.dark-mode-toggle .icon {
+  font-size: 18px;
+  transition: transform 0.3s ease;
+}
+
+/* Animation for theme transition */
+* {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease !important;
+}
+
+/* Specific overrides for complex components */
+[data-theme="dark"] .material-icons {
+  color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] .text-white {
+  color: var(--text-inverse) !important;
+}
+
+[data-theme="dark"] .bg-black {
+  background-color: var(--bg-primary) !important;
+}
+
+/* Custom scrollbar for dark mode */
+[data-theme="dark"] ::-webkit-scrollbar {
+  width: 8px;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: var(--border-secondary);
+  border-radius: 4px;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+/* Om Engineers special styling for dark mode */
+[data-theme="dark"] .om-engineers-badge {
+  background-color: #dc2626 !important;
+  color: #ffffff !important;
+  border-color: #b91c1c !important;
+}
+
+/* Form validation states */
+[data-theme="dark"] .invalid {
+  border-color: var(--text-error) !important;
+  background-color: rgba(239, 68, 68, 0.1) !important;
+}
+
+[data-theme="dark"] .valid {
+  border-color: var(--text-success) !important;
+  background-color: rgba(16, 185, 129, 0.1) !important;
+}
+
+/* Dropdown styles */
+[data-theme="dark"] select option {
+  background-color: var(--bg-input) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Placeholder text */
+[data-theme="dark"] ::placeholder {
+  color: var(--text-tertiary) !important;
+}
+
+/* Loading states */
+[data-theme="dark"] .loading {
+  background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--bg-tertiary) 50%, var(--bg-secondary) 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+}
+
+@keyframes loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Print styles - force light mode for printing */
+@media print {
+  * {
+    background-color: white !important;
+    color: black !important;
+    border-color: #ccc !important;
+  }
+}

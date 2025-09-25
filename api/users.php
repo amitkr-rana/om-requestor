@@ -5,7 +5,13 @@ requireRole('admin');
 
 header('Content-Type: application/json');
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    $action = $_GET['action'] ?? '';
+    if ($action === 'get') {
+        getUser();
+        exit;
+    }
+} else if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(['error' => 'Method not allowed']);
     exit;
@@ -31,6 +37,34 @@ switch ($action) {
         echo json_encode(['error' => 'Invalid action']);
 }
 
+function getUser() {
+    global $db;
+
+    $user_id = (int)($_GET['id'] ?? 0);
+
+    if ($user_id <= 0) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid user ID']);
+        return;
+    }
+
+    $user = $db->fetch(
+        "SELECT id, username, email, full_name, role, organization_id, is_active, created_at FROM users WHERE id = ?",
+        [$user_id]
+    );
+
+    if (!$user) {
+        http_response_code(404);
+        echo json_encode(['error' => 'User not found']);
+        return;
+    }
+
+    echo json_encode([
+        'success' => true,
+        'user' => $user
+    ]);
+}
+
 function createUser() {
     global $db;
 
@@ -45,7 +79,9 @@ function createUser() {
     $password = $_POST['password'] ?? '';
     $full_name = sanitize($_POST['full_name'] ?? '');
     $role = sanitize($_POST['role'] ?? '');
-    $organization_id = (int)$_SESSION['organization_id'];
+
+    // Get organization_id from form, fallback to admin's organization
+    $organization_id = isset($_POST['organization_id']) ? (int)$_POST['organization_id'] : (int)$_SESSION['organization_id'];
 
     // Validation
     if (empty($username) || empty($email) || empty($password) || empty($full_name) || empty($role)) {
@@ -54,7 +90,7 @@ function createUser() {
         return;
     }
 
-    if (!in_array($role, ['requestor', 'approver'])) {
+    if (!in_array($role, ['admin', 'requestor', 'approver'])) {
         http_response_code(400);
         echo json_encode(['error' => 'Invalid role selected']);
         return;
@@ -70,6 +106,32 @@ function createUser() {
         http_response_code(400);
         echo json_encode(['error' => 'Password must be at least 6 characters long']);
         return;
+    }
+
+    // Validate organization exists (allow 2 for Om Engineers system admin org)
+    if ($organization_id < 0) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid organization selected']);
+        return;
+    }
+
+    // Special handling for Om Engineers (system admin organization)
+    if ($organization_id === 2) {
+        // Om Engineers is a special system admin organization - always valid
+        // Only allow for admin role
+        if ($role !== 'admin') {
+            http_response_code(400);
+            echo json_encode(['error' => 'Om Engineers organization is reserved for system administrators']);
+            return;
+        }
+    } else {
+        // Validate regular organizations exist in database
+        $organization = $db->fetch("SELECT id FROM organizations WHERE id = ?", [$organization_id]);
+        if (!$organization) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Selected organization does not exist']);
+            return;
+        }
     }
 
     // Check if username or email already exists
@@ -120,6 +182,7 @@ function updateUser() {
     $full_name = sanitize($_POST['full_name'] ?? '');
     $role = sanitize($_POST['role'] ?? '');
     $password = $_POST['password'] ?? '';
+    $organization_id = (int)($_POST['organization_id'] ?? 0);
 
     if ($user_id <= 0) {
         http_response_code(400);
@@ -134,7 +197,7 @@ function updateUser() {
         return;
     }
 
-    if (!in_array($role, ['requestor', 'approver'])) {
+    if (!in_array($role, ['admin', 'requestor', 'approver'])) {
         http_response_code(400);
         echo json_encode(['error' => 'Invalid role selected']);
         return;
@@ -144,6 +207,23 @@ function updateUser() {
         http_response_code(400);
         echo json_encode(['error' => 'Invalid email address']);
         return;
+    }
+
+    // Validate organization exists (if provided)
+    if ($organization_id > 0) {
+        $organization = $db->fetch("SELECT id FROM organizations WHERE id = ?", [$organization_id]);
+        if (!$organization) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Selected organization does not exist']);
+            return;
+        }
+    } else if ($organization_id === 2) {
+        // Special handling for Om Engineers (system admin organization)
+        if ($role !== 'admin') {
+            http_response_code(400);
+            echo json_encode(['error' => 'Om Engineers organization is reserved for system administrators']);
+            return;
+        }
     }
 
     // Check if username or email already exists (excluding current user)
@@ -159,8 +239,16 @@ function updateUser() {
     }
 
     // Update user
-    $params = [$username, $email, $full_name, $role, $user_id];
+    $params = [$username, $email, $full_name, $role];
     $sql = "UPDATE users SET username = ?, email = ?, full_name = ?, role = ?";
+
+    // Update organization if provided (including 2 for Om Engineers)
+    if ($organization_id >= 0) {
+        $sql .= ", organization_id = ?";
+        $params[] = $organization_id;
+    }
+
+    $params[] = $user_id;
 
     // Update password if provided
     if (!empty($password)) {

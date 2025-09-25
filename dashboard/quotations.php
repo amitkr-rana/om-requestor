@@ -16,6 +16,12 @@ $date_to = sanitize($_GET['date_to'] ?? '');
 $conditions = ["1=1"];
 $params = [];
 
+// Organization filtering - respect current organization context via users table
+if ($_SESSION['organization_id'] != 2) { // If not Om Engineers system admin
+    $conditions[] = "u.organization_id = ?";
+    $params[] = $_SESSION['organization_id'];
+}
+
 if ($status_filter) {
     $conditions[] = "q.status = ?";
     $params[] = $status_filter;
@@ -33,11 +39,14 @@ if ($date_to) {
 
 $whereClause = implode(' AND ', $conditions);
 
-// Get total count
-$totalQuotations = $db->fetch(
-    "SELECT COUNT(*) as count FROM quotations q WHERE {$whereClause}",
+// Get total count with safe array access
+$totalQuotationsResult = $db->fetch(
+    "SELECT COUNT(*) as count FROM quotations q
+     JOIN service_requests sr ON q.request_id = sr.id
+     WHERE {$whereClause}",
     $params
-)['count'];
+);
+$totalQuotations = $totalQuotationsResult ? $totalQuotationsResult['count'] : 0;
 
 // Get quotations with pagination
 $quotations = $db->fetchAll(
@@ -57,275 +66,253 @@ $quotations = $db->fetchAll(
 
 $pagination = paginate($page, $totalQuotations, $limit);
 
-// Get pending service requests for new quotations
+// Get pending service requests for new quotations - filter by organization via users table
+$pendingConditions = ["sr.status = 'pending'", "q.id IS NULL"];
+$pendingParams = [];
+if ($_SESSION['organization_id'] != 2) { // If not Om Engineers system admin
+    $pendingConditions[] = "u.organization_id = ?";
+    $pendingParams[] = $_SESSION['organization_id'];
+}
+
+$pendingWhereClause = implode(' AND ', $pendingConditions);
 $pendingRequests = $db->fetchAll(
     "SELECT sr.*, v.registration_number, u.full_name as requestor_name
      FROM service_requests sr
      JOIN vehicles v ON sr.vehicle_id = v.id
      JOIN users u ON sr.user_id = u.id
      LEFT JOIN quotations q ON sr.id = q.request_id
-     WHERE sr.status = 'pending' AND q.id IS NULL
-     ORDER BY sr.created_at DESC"
+     WHERE {$pendingWhereClause}
+     ORDER BY sr.created_at DESC",
+    $pendingParams
 );
 
 // Get approvers for sending quotations
 $approvers = getUsers($_SESSION['organization_id'], 'approver');
+
+// Set page title based on status filter
+$pageTitle = 'Quotation Management';
+if ($status_filter) {
+    switch($status_filter) {
+        case 'pending':
+            $pageTitle = 'Pending Quotation Requests';
+            break;
+        case 'sent':
+            $pageTitle = 'Quotations Sent for Approval';
+            break;
+        case 'approved':
+            $pageTitle = 'Approved Quotations';
+            break;
+        case 'rejected':
+            $pageTitle = 'Rejected Quotations';
+            break;
+        default:
+            $pageTitle = 'Quotation Management';
+    }
+}
+
+include '../includes/admin_head.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quotation Management - <?php echo APP_NAME; ?></title>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-    <link href="../assets/css/material.css" rel="stylesheet">
-    <link href="../assets/css/style-base.css" rel="stylesheet">
-    <link href="../assets/css/style-desktop.css" rel="stylesheet" media="(min-width: 769px)">
-    <link href="../assets/css/style-mobile.css" rel="stylesheet" media="(max-width: 768px)">
-</head>
-<body>
-    <div class="dashboard-layout">
-        <!-- Sidebar -->
-        <aside class="dashboard-sidebar">
-            <div class="user-info">
-                <div class="user-avatar"><?php echo strtoupper(substr($_SESSION['full_name'], 0, 2)); ?></div>
-                <p class="user-name"><?php echo htmlspecialchars($_SESSION['full_name']); ?></p>
-                <p class="user-role"><?php echo ucfirst($_SESSION['role']); ?></p>
-            </div>
+<?php include '../includes/admin_sidebar.php'; ?>
+                <div class="layout-content-container flex flex-col flex-1 overflow-y-auto">
+                    <?php include '../includes/admin_header.php'; ?>
 
-            <nav>
-                <ul class="sidebar-nav">
-                    <li><a href="admin.php">
-                        <span class="material-icons">dashboard</span>
-                        Dashboard
-                    </a></li>
-                    <li><a href="users.php">
-                        <span class="material-icons">group</span>
-                        User Management
-                    </a></li>
-                    <li><a href="requests.php">
-                        <span class="material-icons">build</span>
-                        Service Requests
-                    </a></li>
-                    <li><a href="quotations.php" class="active">
-                        <span class="material-icons">receipt</span>
-                        Quotations
-                    </a></li>
-                    <li><a href="reports.php">
-                        <span class="material-icons">assessment</span>
-                        Reports
-                    </a></li>
-                    <li><a href="vehicles.php">
-                        <span class="material-icons">directions_car</span>
-                        Vehicles
-                    </a></li>
-                    <li><a href="../api/auth.php?action=logout" data-confirm="Are you sure you want to logout?">
-                        <span class="material-icons">logout</span>
-                        Logout
-                    </a></li>
-                </ul>
-            </nav>
-        </aside>
-
-        <!-- Header -->
-        <header class="dashboard-header">
-            <h1 class="header-title">Quotation Management</h1>
-            <div class="header-actions">
-                <?php if (!empty($pendingRequests)): ?>
-                    <button type="button" class="btn btn-primary" data-modal="createQuotationModal">
-                        <span class="material-icons left">receipt_long</span>
-                        Create Quotation
-                    </button>
-                <?php endif; ?>
-            </div>
-        </header>
-
-        <!-- Main Content -->
-        <main class="dashboard-main">
-            <!-- Filters -->
-            <div class="filters">
-                <form method="GET" action="">
-                    <div class="row">
-                        <div class="col-3">
-                            <div class="input-field">
-                                <select id="status" name="status" data-auto-submit>
-                                    <option value="">All Status</option>
-                                    <option value="sent" <?php echo $status_filter === 'sent' ? 'selected' : ''; ?>>Sent</option>
-                                    <option value="approved" <?php echo $status_filter === 'approved' ? 'selected' : ''; ?>>Approved</option>
-                                    <option value="rejected" <?php echo $status_filter === 'rejected' ? 'selected' : ''; ?>>Rejected</option>
-                                </select>
-                                <label for="status">Status</label>
+                    <!-- Main Content -->
+                    <div class="p-6">
+                        <!-- Action Buttons -->
+                        <?php if (!empty($pendingRequests)): ?>
+                            <div class="mb-6">
+                                <button type="button" onclick="document.getElementById('createQuotationModal').style.display='block'" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2">
+                                    <span class="material-icons">receipt_long</span>
+                                    <span>Create Quotation</span>
+                                </button>
                             </div>
-                        </div>
-                        <div class="col-3">
-                            <div class="input-field">
-                                <input type="date" id="date_from" name="date_from" value="<?php echo htmlspecialchars($date_from); ?>">
-                                <label for="date_from">From Date</label>
-                            </div>
-                        </div>
-                        <div class="col-3">
-                            <div class="input-field">
-                                <input type="date" id="date_to" name="date_to" value="<?php echo htmlspecialchars($date_to); ?>">
-                                <label for="date_to">To Date</label>
-                            </div>
-                        </div>
-                        <div class="col-3">
-                            <button type="submit" class="btn btn-primary">
-                                <span class="material-icons left">search</span>
-                                Filter
-                            </button>
-                            <a href="quotations.php" class="btn btn-outlined">Clear</a>
-                        </div>
-                    </div>
-                </form>
-            </div>
+                        <?php endif; ?>
 
-            <!-- Pending Requests for Quotations -->
-            <?php if (!empty($pendingRequests)): ?>
-                <div class="table-container">
-                    <div class="table-header">
-                        <h3 class="table-title">Pending Requests (<?php echo count($pendingRequests); ?>)</h3>
-                        <span class="text-muted">Requests waiting for quotations</span>
-                    </div>
-                    <div class="table-responsive">
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Vehicle</th>
-                                    <th>Requestor</th>
-                                    <th>Problem</th>
-                                    <th>Date</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($pendingRequests as $request): ?>
-                                    <tr>
-                                        <td>#<?php echo $request['id']; ?></td>
-                                        <td><?php echo htmlspecialchars($request['registration_number']); ?></td>
-                                        <td><?php echo htmlspecialchars($request['requestor_name']); ?></td>
-                                        <td><?php echo htmlspecialchars(substr($request['problem_description'], 0, 50)); ?>...</td>
-                                        <td><?php echo formatDate($request['created_at']); ?></td>
-                                        <td>
-                                            <button type="button" class="btn btn-small btn-primary"
-                                                    onclick="createQuotationFor(<?php echo $request['id']; ?>, '<?php echo htmlspecialchars($request['registration_number']); ?>', '<?php echo htmlspecialchars($request['problem_description']); ?>')">
-                                                <span class="material-icons">receipt_long</span>
-                                                Create Quote
-                                            </button>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            <?php endif; ?>
+                        <!-- Filters -->
+                        <div class="bg-white rounded-lg border border-blue-100 p-6 mb-6">
+                            <form method="GET" action="" class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                                <div>
+                                    <label for="status" class="block text-sm font-medium text-blue-900 mb-2">Status</label>
+                                    <select id="status" name="status" class="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                        <option value="">All Status</option>
+                                        <option value="sent" <?php echo $status_filter === 'sent' ? 'selected' : ''; ?>>Sent</option>
+                                        <option value="approved" <?php echo $status_filter === 'approved' ? 'selected' : ''; ?>>Approved</option>
+                                        <option value="rejected" <?php echo $status_filter === 'rejected' ? 'selected' : ''; ?>>Rejected</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="date_from" class="block text-sm font-medium text-blue-900 mb-2">From Date</label>
+                                    <input type="date" id="date_from" name="date_from" value="<?php echo htmlspecialchars($date_from); ?>" class="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                </div>
+                                <div>
+                                    <label for="date_to" class="block text-sm font-medium text-blue-900 mb-2">To Date</label>
+                                    <input type="date" id="date_to" name="date_to" value="<?php echo htmlspecialchars($date_to); ?>" class="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                </div>
+                                <div class="flex gap-2">
+                                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2">
+                                        <span class="material-icons text-sm">search</span>
+                                        <span>Filter</span>
+                                    </button>
+                                    <a href="quotations.php" class="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors">Clear</a>
+                                </div>
+                            </form>
+                        </div>
 
-            <!-- Quotations Table -->
-            <div class="table-container">
-                <div class="table-header">
-                    <h3 class="table-title">All Quotations (<?php echo $totalQuotations; ?>)</h3>
-                </div>
-                <div class="table-responsive">
-                    <table class="table data-table">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Vehicle</th>
-                                <th>Requestor</th>
-                                <th>Amount</th>
-                                <th>Status</th>
-                                <th>Approver</th>
-                                <th>Created</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if (empty($quotations)): ?>
-                                <tr>
-                                    <td colspan="8" class="text-center text-muted">No quotations found</td>
-                                </tr>
-                            <?php else: ?>
-                                <?php foreach ($quotations as $quotation): ?>
-                                    <tr>
-                                        <td>#<?php echo $quotation['id']; ?></td>
-                                        <td><?php echo htmlspecialchars($quotation['registration_number']); ?></td>
-                                        <td><?php echo htmlspecialchars($quotation['requestor_name']); ?></td>
-                                        <td><?php echo formatCurrency($quotation['amount']); ?></td>
-                                        <td>
-                                            <?php if ($quotation['approval_status']): ?>
-                                                <?php echo getStatusBadge($quotation['approval_status']); ?>
-                                            <?php else: ?>
-                                                <?php echo getStatusBadge('sent'); ?>
+                        <!-- Pending Requests for Quotations -->
+                        <?php if (!empty($pendingRequests)): ?>
+                            <div class="bg-white rounded-lg border border-blue-100 mb-6">
+                                <div class="p-6 border-b border-blue-100">
+                                    <div class="flex justify-between items-center">
+                                        <h3 class="text-blue-900 text-xl font-semibold">Pending Requests (<?php echo count($pendingRequests); ?>)</h3>
+                                        <span class="text-blue-600 text-sm">Requests waiting for quotations</span>
+                                    </div>
+                                </div>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full">
+                                        <thead class="bg-blue-50">
+                                            <tr>
+                                                <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">ID</th>
+                                                <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Vehicle</th>
+                                                <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Requestor</th>
+                                                <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Problem</th>
+                                                <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Date</th>
+                                                <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-blue-100">
+                                            <?php foreach ($pendingRequests as $request): ?>
+                                                <tr class="hover:bg-blue-50">
+                                                    <td class="px-6 py-4 text-blue-900 text-sm font-medium">#<?php echo $request['id']; ?></td>
+                                                    <td class="px-6 py-4 text-blue-700 text-sm"><?php echo htmlspecialchars($request['registration_number']); ?></td>
+                                                    <td class="px-6 py-4 text-blue-700 text-sm"><?php echo htmlspecialchars($request['requestor_name']); ?></td>
+                                                    <td class="px-6 py-4 text-blue-600 text-sm max-w-xs truncate"><?php echo htmlspecialchars(substr($request['problem_description'], 0, 50)); ?>...</td>
+                                                    <td class="px-6 py-4 text-blue-600 text-sm"><?php echo date('M d, Y', strtotime($request['created_at'])); ?></td>
+                                                    <td class="px-6 py-4">
+                                                        <button type="button" onclick="createQuotationFor(<?php echo $request['id']; ?>, '<?php echo htmlspecialchars($request['registration_number']); ?>', '<?php echo htmlspecialchars($request['problem_description']); ?>')" class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition-colors flex items-center gap-1">
+                                                            <span class="material-icons text-sm">receipt_long</span>
+                                                            <span>Create Quote</span>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+
+                        <!-- Quotations Table -->
+                        <div class="bg-white rounded-lg border border-blue-100">
+                            <div class="p-6 border-b border-blue-100">
+                                <h3 class="text-blue-900 text-xl font-semibold">All Quotations (<?php echo $totalQuotations; ?>)</h3>
+                            </div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full">
+                                    <thead class="bg-blue-50">
+                                        <tr>
+                                            <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">ID</th>
+                                            <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Vehicle</th>
+                                            <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Requestor</th>
+                                            <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Amount</th>
+                                            <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Status</th>
+                                            <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Approver</th>
+                                            <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Created</th>
+                                            <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-blue-100">
+                                        <?php if (empty($quotations)): ?>
+                                            <tr>
+                                                <td colspan="8" class="px-6 py-8 text-center text-blue-600">No quotations found</td>
+                                            </tr>
+                                        <?php else: ?>
+                                            <?php foreach ($quotations as $quotation): ?>
+                                                <tr class="hover:bg-blue-50">
+                                                    <td class="px-6 py-4 text-blue-900 text-sm font-medium">#<?php echo $quotation['id']; ?></td>
+                                                    <td class="px-6 py-4 text-blue-700 text-sm"><?php echo htmlspecialchars($quotation['registration_number']); ?></td>
+                                                    <td class="px-6 py-4 text-blue-700 text-sm"><?php echo htmlspecialchars($quotation['requestor_name']); ?></td>
+                                                    <td class="px-6 py-4 text-blue-900 text-sm font-medium">$<?php echo number_format($quotation['amount'], 2); ?></td>
+                                                    <td class="px-6 py-4 text-sm">
+                                                        <?php
+                                                        $status = $quotation['approval_status'] ?: 'sent';
+                                                        $statusColors = [
+                                                            'sent' => 'bg-yellow-100 text-yellow-800',
+                                                            'pending' => 'bg-yellow-100 text-yellow-800',
+                                                            'approved' => 'bg-green-100 text-green-800',
+                                                            'rejected' => 'bg-red-100 text-red-800'
+                                                        ];
+                                                        $statusClass = $statusColors[$status] ?? 'bg-gray-100 text-gray-800';
+                                                        ?>
+                                                        <span class="px-3 py-1 rounded-full text-xs font-medium <?php echo $statusClass; ?>">
+                                                            <?php echo ucfirst($status); ?>
+                                                        </span>
+                                                    </td>
+                                                    <td class="px-6 py-4 text-blue-700 text-sm">
+                                                        <?php if ($quotation['approver_name']): ?>
+                                                            <?php echo htmlspecialchars($quotation['approver_name']); ?>
+                                                        <?php else: ?>
+                                                            <span class="text-blue-400">Not assigned</span>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                    <td class="px-6 py-4 text-blue-600 text-sm"><?php echo date('M d, Y', strtotime($quotation['created_at'])); ?></td>
+                                                    <td class="px-6 py-4">
+                                                        <div class="flex gap-2">
+                                                            <button type="button" onclick="viewQuotation(<?php echo $quotation['id']; ?>)" class="bg-gray-100 text-gray-600 px-2 py-1 rounded text-sm hover:bg-gray-200 transition-colors">
+                                                                <span class="material-icons text-sm">visibility</span>
+                                                            </button>
+                                                            <?php if (!$quotation['approval_status'] || $quotation['approval_status'] === 'pending'): ?>
+                                                                <button type="button" onclick="editQuotation(<?php echo $quotation['id']; ?>)" class="bg-blue-600 text-white px-2 py-1 rounded text-sm hover:bg-blue-700 transition-colors">
+                                                                    <span class="material-icons text-sm">edit</span>
+                                                                </button>
+                                                            <?php endif; ?>
+                                                            <?php if (!$quotation['approver_name']): ?>
+                                                                <button type="button" onclick="sendToApprover(<?php echo $quotation['id']; ?>)" class="bg-green-600 text-white px-2 py-1 rounded text-sm hover:bg-green-700 transition-colors">
+                                                                    <span class="material-icons text-sm">send</span>
+                                                                </button>
+                                                            <?php endif; ?>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- Pagination -->
+                            <?php if ($pagination['total_pages'] > 1): ?>
+                                <div class="p-6 border-t border-blue-100">
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-blue-600 text-sm">
+                                            Showing <?php echo ($offset + 1); ?> to <?php echo min($offset + $limit, $totalQuotations); ?> of <?php echo $totalQuotations; ?> quotations
+                                        </span>
+                                        <div class="flex gap-2">
+                                            <?php if ($page > 1): ?>
+                                                <a href="?page=<?php echo $page - 1; ?>&<?php echo http_build_query(array_filter($_GET, fn($k) => $k !== 'page', ARRAY_FILTER_USE_KEY)); ?>" class="bg-gray-100 text-gray-600 px-3 py-1 rounded hover:bg-gray-200 transition-colors flex items-center gap-1">
+                                                    <span class="material-icons text-sm">chevron_left</span>
+                                                </a>
                                             <?php endif; ?>
-                                        </td>
-                                        <td>
-                                            <?php if ($quotation['approver_name']): ?>
-                                                <?php echo htmlspecialchars($quotation['approver_name']); ?>
-                                            <?php else: ?>
-                                                <span class="text-muted">Not assigned</span>
+
+                                            <?php for ($i = max(1, $page - 2); $i <= min($pagination['total_pages'], $page + 2); $i++): ?>
+                                                <a href="?page=<?php echo $i; ?>&<?php echo http_build_query(array_filter($_GET, fn($k) => $k !== 'page', ARRAY_FILTER_USE_KEY)); ?>" class="px-3 py-1 rounded text-sm transition-colors <?php echo $i === $page ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'; ?>">
+                                                    <?php echo $i; ?>
+                                                </a>
+                                            <?php endfor; ?>
+
+                                            <?php if ($page < $pagination['total_pages']): ?>
+                                                <a href="?page=<?php echo $page + 1; ?>&<?php echo http_build_query(array_filter($_GET, fn($k) => $k !== 'page', ARRAY_FILTER_USE_KEY)); ?>" class="bg-gray-100 text-gray-600 px-3 py-1 rounded hover:bg-gray-200 transition-colors flex items-center gap-1">
+                                                    <span class="material-icons text-sm">chevron_right</span>
+                                                </a>
                                             <?php endif; ?>
-                                        </td>
-                                        <td><?php echo formatDate($quotation['created_at']); ?></td>
-                                        <td>
-                                            <button type="button" class="btn btn-small btn-outlined"
-                                                    onclick="viewQuotation(<?php echo $quotation['id']; ?>)">
-                                                <span class="material-icons">visibility</span>
-                                            </button>
-                                            <?php if (!$quotation['approval_status'] || $quotation['approval_status'] === 'pending'): ?>
-                                                <button type="button" class="btn btn-small btn-primary"
-                                                        onclick="editQuotation(<?php echo $quotation['id']; ?>)">
-                                                    <span class="material-icons">edit</span>
-                                                </button>
-                                            <?php endif; ?>
-                                            <?php if (!$quotation['approver_name']): ?>
-                                                <button type="button" class="btn btn-small btn-success"
-                                                        onclick="sendToApprover(<?php echo $quotation['id']; ?>)">
-                                                    <span class="material-icons">send</span>
-                                                </button>
-                                            <?php endif; ?>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
+                                        </div>
+                                    </div>
+                                </div>
                             <?php endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-
-                <!-- Pagination -->
-                <?php if ($pagination['total_pages'] > 1): ?>
-                    <div class="card-content">
-                        <div class="d-flex justify-between align-center">
-                            <span class="text-muted">
-                                Showing <?php echo ($offset + 1); ?> to <?php echo min($offset + $limit, $totalQuotations); ?> of <?php echo $totalQuotations; ?> quotations
-                            </span>
-                            <div>
-                                <?php if ($page > 1): ?>
-                                    <a href="?page=<?php echo $page - 1; ?>&<?php echo http_build_query(array_filter($_GET, fn($k) => $k !== 'page', ARRAY_FILTER_USE_KEY)); ?>" class="btn btn-outlined btn-small">
-                                        <span class="material-icons">chevron_left</span>
-                                    </a>
-                                <?php endif; ?>
-
-                                <?php for ($i = max(1, $page - 2); $i <= min($pagination['total_pages'], $page + 2); $i++): ?>
-                                    <a href="?page=<?php echo $i; ?>&<?php echo http_build_query(array_filter($_GET, fn($k) => $k !== 'page', ARRAY_FILTER_USE_KEY)); ?>"
-                                       class="btn btn-small <?php echo $i === $page ? 'btn-primary' : 'btn-outlined'; ?>">
-                                        <?php echo $i; ?>
-                                    </a>
-                                <?php endfor; ?>
-
-                                <?php if ($page < $pagination['total_pages']): ?>
-                                    <a href="?page=<?php echo $page + 1; ?>&<?php echo http_build_query(array_filter($_GET, fn($k) => $k !== 'page', ARRAY_FILTER_USE_KEY)); ?>" class="btn btn-outlined btn-small">
-                                        <span class="material-icons">chevron_right</span>
-                                    </a>
-                                <?php endif; ?>
-                            </div>
                         </div>
                     </div>
-                <?php endif; ?>
+                </div>
             </div>
-        </main>
+        </div>
     </div>
 
     <!-- Create Quotation Modal -->
@@ -433,13 +420,20 @@ $approvers = getUsers($_SESSION['organization_id'], 'approver');
 
         function viewQuotation(quotationId) {
             // Implement quotation view/details
-            Material.showSnackbar('View quotation functionality will be implemented', 'info');
+            alert('View quotation functionality will be implemented');
         }
 
         function editQuotation(quotationId) {
             // Implement quotation edit functionality
-            Material.showSnackbar('Edit quotation functionality will be implemented', 'info');
+            alert('Edit quotation functionality will be implemented');
         }
+
+        // Modal handling
+        document.getElementById('createQuotationModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                this.style.display = 'none';
+            }
+        });
     </script>
 </body>
 </html>

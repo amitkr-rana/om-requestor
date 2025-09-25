@@ -35,7 +35,23 @@ function createVehicle() {
     }
 
     $registration_number = strtoupper(sanitize($_POST['registration_number'] ?? ''));
-    $user_id = $_SESSION['user_id'];
+
+    // Allow admins to create vehicles for other users
+    if ($_SESSION['role'] === 'admin' && isset($_POST['user_id'])) {
+        $user_id = (int)$_POST['user_id'];
+
+        // Verify the user exists and belongs to admin's organization (unless Om Engineers)
+        if ($_SESSION['organization_id'] != 2) {
+            $userCheck = $db->fetch("SELECT id FROM users WHERE id = ? AND organization_id = ?", [$user_id, $_SESSION['organization_id']]);
+            if (!$userCheck) {
+                http_response_code(400);
+                echo json_encode(['error' => 'Invalid user selection']);
+                return;
+            }
+        }
+    } else {
+        $user_id = $_SESSION['user_id'];
+    }
 
     // Validation
     if (empty($registration_number)) {

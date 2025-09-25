@@ -215,4 +215,27 @@ function getServiceRequests($filters = []) {
     $sql .= " ORDER BY sr.created_at DESC";
     return $db->fetchAll($sql, $params);
 }
+
+// Organization management functions
+function getAllOrganizations() {
+    global $db;
+    return $db->fetchAll(
+        "SELECT id, name, created_at FROM organizations ORDER BY name ASC"
+    );
+}
+
+function getOrganizationById($id) {
+    global $db;
+    $id = (int)$id;
+    if ($id <= 0) {
+        return null;
+    }
+
+    $result = $db->fetch(
+        "SELECT id, name, created_at FROM organizations WHERE id = ?",
+        [$id]
+    );
+
+    return $result ?: null;
+}
 ?>
