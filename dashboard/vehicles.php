@@ -124,19 +124,6 @@ include '../includes/admin_head.php';
                                     </div>
                                 </div>
                             </div>
-                            <div class="bg-white rounded-lg p-4 border border-blue-100 shadow-sm">
-                                <div class="flex items-center gap-3">
-                                    <div class="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center">
-                                        <span class="material-icons text-orange-600 text-lg">domain</span>
-                                    </div>
-                                    <div>
-                                        <p class="text-orange-600 text-xs font-medium uppercase tracking-wide">Current Org</p>
-                                        <p class="text-orange-900 text-sm font-bold truncate max-w-24" title="<?php echo htmlspecialchars($organizationName ?? 'Default'); ?>">
-                                            <?php echo htmlspecialchars($organizationName ?? 'Default'); ?>
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
                         </div>
 
                         <!-- Action Button -->

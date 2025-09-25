@@ -50,14 +50,6 @@ if ($_SESSION['role'] === 'admin') {
                 </div>
             </div>
             <!-- Current Organization Display -->
-            <div class="flex items-center gap-2">
-                <span class="px-2 py-1 rounded text-xs font-medium <?php echo $currentOrgId == 2 ? 'bg-red-100 text-red-800 border border-red-200 om-engineers-badge' : 'bg-blue-100 text-blue-800'; ?>">
-                    <?php echo htmlspecialchars($currentOrgName); ?>
-                    <?php if ($currentOrgId == 2): ?>
-                        <span class="ml-1 text-red-600">⚡</span>
-                    <?php endif; ?>
-                </span>
-            </div>
         </div>
         <?php elseif ($_SESSION['role'] === 'admin'): ?>
         <!-- Admin with no switchable organizations -->
