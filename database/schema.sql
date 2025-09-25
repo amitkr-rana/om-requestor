@@ -109,12 +109,18 @@ CREATE TABLE `work_orders` (
   CONSTRAINT `fk_workorders_quotation` FOREIGN KEY (`quotation_id`) REFERENCES `quotations` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Insert default organization
+-- Insert default organizations
 INSERT INTO `organizations` (`name`) VALUES ('Sammaan Foundation');
+INSERT INTO `organizations` (`name`) VALUES ('Om Engineers');
 
--- Insert default admin user
+-- Insert Om Engineers admin user (system administrator who can switch between client orgs)
 -- Password: admin123 (hashed with password_hash())
 INSERT INTO `users` (`organization_id`, `username`, `email`, `password`, `role`, `full_name`)
-VALUES (1, 'admin', 'admin@om-engineers.org', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin', 'System Administrator');
+VALUES (2, 'admin', 'admin@om-engineers.org', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin', 'Om Engineers Admin');
+
+-- Insert sample Sammaan Foundation admin user
+-- Password: sammaan123 (hashed with password_hash())
+INSERT INTO `users` (`organization_id`, `username`, `email`, `password`, `role`, `full_name`)
+VALUES (1, 'sammaan_admin', 'admin@sammaan.org', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin', 'Sammaan Foundation Admin');
 
 COMMIT;

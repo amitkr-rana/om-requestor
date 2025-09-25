@@ -33,9 +33,30 @@ function login($username, $password) {
         $_SESSION['user_id'] = $user['id'];
         $_SESSION['username'] = $user['username'];
         $_SESSION['role'] = $user['role'];
-        $_SESSION['organization_id'] = $user['organization_id'];
-        $_SESSION['organization_name'] = $user['organization_name'];
         $_SESSION['full_name'] = $user['full_name'];
+
+        // Special handling for Om Engineers admin - default to first client organization
+        if ($user['organization_id'] == 2 && $user['role'] === 'admin') {
+            // Mark as Om Engineers admin for future reference
+            $_SESSION['is_om_engineers_admin'] = true;
+            $_SESSION['original_organization_id'] = $user['organization_id'];
+
+            // Get first available client organization
+            $clientOrg = $db->fetch("SELECT id, name FROM organizations WHERE id != 2 ORDER BY name LIMIT 1");
+            if ($clientOrg) {
+                $_SESSION['organization_id'] = $clientOrg['id'];
+                $_SESSION['organization_name'] = $clientOrg['name'];
+            } else {
+                // Fallback to Om Engineers if no client orgs exist
+                $_SESSION['organization_id'] = $user['organization_id'];
+                $_SESSION['organization_name'] = $user['organization_name'];
+            }
+        } else {
+            // Regular users keep their original organization
+            $_SESSION['organization_id'] = $user['organization_id'];
+            $_SESSION['organization_name'] = $user['organization_name'];
+        }
+
         return true;
     }
     return false;

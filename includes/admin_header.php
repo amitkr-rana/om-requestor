@@ -2,19 +2,29 @@
 // Admin header component
 // Expects $pageTitle to be set before including this file
 
-// Get current organization info
-$currentOrgId = $_SESSION['organization_id'] ?? 0;
-if ($currentOrgId == 2) {
-    $currentOrgName = 'Om Engineers';
-} else {
-    $currentOrg = $db->fetch("SELECT name FROM organizations WHERE id = ?", [$currentOrgId]);
-    $currentOrgName = $currentOrg['name'] ?? 'Organization';
-}
-
 // Get all organizations for dropdown (only for admins, exclude Om Engineers)
 $allOrganizations = [];
 if ($_SESSION['role'] === 'admin') {
     $allOrganizations = $db->fetchAll("SELECT id, name FROM organizations WHERE id != 2 ORDER BY name");
+}
+
+// Get current organization info - ensure Om Engineers admin defaults to first client org
+$currentOrgId = $_SESSION['organization_id'] ?? 0;
+
+// If current user is Om Engineers admin but no org selected, default to first available client org
+if ($currentOrgId == 2 && count($allOrganizations) > 0) {
+    $currentOrgId = $allOrganizations[0]['id'];
+    $_SESSION['organization_id'] = $currentOrgId;
+    $_SESSION['organization_name'] = $allOrganizations[0]['name'];
+}
+
+// Get current organization name
+if ($currentOrgId == 2) {
+    // This should not happen anymore, but keep as fallback
+    $currentOrgName = 'Om Engineers (System Admin)';
+} else {
+    $currentOrg = $db->fetch("SELECT name FROM organizations WHERE id = ?", [$currentOrgId]);
+    $currentOrgName = $currentOrg['name'] ?? 'Organization';
 }
 ?>
 <div class="flex justify-between items-center p-6 bg-white border-b border-blue-100">
@@ -32,13 +42,7 @@ if ($_SESSION['role'] === 'admin') {
             <span class="text-blue-600 text-sm font-medium">Organization:</span>
             <div class="relative">
                 <select id="orgSwitcher" class="bg-white border border-blue-200 rounded-lg px-3 py-2 text-sm font-medium text-blue-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
-                    <?php if ($currentOrgId == 2): ?>
-                        <!-- Show current selection as Om Engineers if currently selected -->
-                        <option value="2" selected class="text-red-600 font-medium">
-                            Om Engineers (System Admin)
-                        </option>
-                    <?php endif; ?>
-                    <!-- Regular Organizations -->
+                    <!-- Only show client organizations - Om Engineers is never shown -->
                     <?php foreach ($allOrganizations as $org): ?>
                         <option value="<?php echo $org['id']; ?>" <?php echo $currentOrgId == $org['id'] ? 'selected' : ''; ?>>
                             <?php echo htmlspecialchars($org['name']); ?>
@@ -52,9 +56,10 @@ if ($_SESSION['role'] === 'admin') {
             <!-- Current Organization Display -->
         </div>
         <?php elseif ($_SESSION['role'] === 'admin'): ?>
-        <!-- Admin with no switchable organizations -->
-        <div class="text-blue-600 text-sm font-medium">
-            <?php echo htmlspecialchars($currentOrgName); ?>
+        <!-- Admin with no client organizations available -->
+        <div class="flex items-center gap-2 text-red-600 text-sm font-medium">
+            <span class="material-icons text-red-500 text-sm">warning</span>
+            <span>No client organizations available</span>
         </div>
         <?php else: ?>
         <!-- Regular Organization Display -->
