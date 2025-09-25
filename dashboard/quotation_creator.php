@@ -337,6 +337,10 @@ include '../includes/admin_head.php';
                                             <button type="button" onclick="window.location.href='quotation_creator.php?action=list'" class="bg-gray-500 text-white px-6 py-2 rounded-lg hover:bg-gray-600">
                                                 View Requests
                                             </button>
+                                            <button type="button" id="previewQuotationBtn" class="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 inline-flex items-center gap-2">
+                                                <span class="material-icons text-sm">visibility</span>
+                                                Preview Quotation
+                                            </button>
                                             <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">
                                                 Create Quotation
                                             </button>
@@ -470,6 +474,10 @@ include '../includes/admin_head.php';
                                         <div class="flex justify-end space-x-3 pt-4 border-t border-blue-100">
                                             <button type="button" onclick="window.location.href='quotation_creator.php'" class="bg-gray-500 text-white px-6 py-2 rounded-lg hover:bg-gray-600">
                                                 Cancel
+                                            </button>
+                                            <button type="button" id="previewQuotationBtnRegular" class="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 inline-flex items-center gap-2">
+                                                <span class="material-icons text-sm">visibility</span>
+                                                Preview Quotation
                                             </button>
                                             <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">
                                                 Create Quotation
@@ -615,6 +623,54 @@ include '../includes/admin_head.php';
                     <button type="submit" class="btn btn-primary">Send Quotation</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Quotation Preview Modal -->
+    <div id="previewModal" class="fixed inset-0 z-50 overflow-y-auto" style="display: none;">
+        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center">
+            <!-- Background overlay -->
+            <div class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onclick="closePreviewModal()"></div>
+
+            <!-- Modal panel -->
+            <div class="relative inline-block w-full max-w-6xl p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-2xl">
+                <!-- Modal header -->
+                <div class="flex items-center justify-between pb-4 border-b border-gray-200">
+                    <div class="flex items-center gap-3">
+                        <span class="material-icons text-green-600">visibility</span>
+                        <h3 class="text-lg font-medium text-gray-900">Quotation Preview</h3>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button type="button" onclick="printPreview()" class="inline-flex items-center px-3 py-2 text-sm font-medium text-blue-700 bg-blue-100 border border-transparent rounded-md hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                            <span class="material-icons text-sm mr-1">print</span>
+                            Print
+                        </button>
+                        <button type="button" onclick="closePreviewModal()" class="inline-flex items-center p-2 text-gray-400 bg-transparent border-0 rounded-lg hover:bg-gray-200 hover:text-gray-900">
+                            <span class="material-icons">close</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Modal content -->
+                <div class="mt-4">
+                    <div id="previewContent" class="w-full border border-gray-300 rounded-lg" style="height: 70vh;">
+                        <!-- Preview iframe will be loaded here -->
+                        <div class="flex items-center justify-center h-full text-gray-500">
+                            <div class="text-center">
+                                <span class="material-icons text-4xl mb-2">description</span>
+                                <p>Loading preview...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal actions -->
+                <div class="flex justify-end gap-3 pt-4 mt-4 border-t border-gray-200">
+                    <button type="button" onclick="closePreviewModal()" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                        Close
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -835,6 +891,175 @@ include '../includes/admin_head.php';
                     syncCustomerFields();
                 });
             }
+        });
+
+        // Quotation Preview functionality
+        function openPreviewModal() {
+            document.getElementById('previewModal').style.display = 'block';
+            document.body.style.overflow = 'hidden'; // Prevent background scrolling
+        }
+
+        function closePreviewModal() {
+            const modal = document.getElementById('previewModal');
+            modal.style.display = 'none';
+            document.body.style.overflow = 'auto'; // Restore scrolling
+
+            // Clear the preview content
+            const previewContent = document.getElementById('previewContent');
+            previewContent.innerHTML = `
+                <div class="flex items-center justify-center h-full text-gray-500">
+                    <div class="text-center">
+                        <span class="material-icons text-4xl mb-2">description</span>
+                        <p>Loading preview...</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function printPreview() {
+            const iframe = document.querySelector('#previewContent iframe');
+            if (iframe && iframe.contentWindow) {
+                iframe.contentWindow.print();
+            }
+        }
+
+        function validateQuotationForm(isStandalone = false) {
+            let errors = [];
+
+            // Check base service charge
+            const baseCharge = document.getElementById('baseServiceCharge');
+            if (!baseCharge || !baseCharge.value || parseFloat(baseCharge.value) <= 0) {
+                errors.push('Base service charge is required and must be greater than zero');
+            }
+
+            // Check work description
+            const workDesc = document.getElementById('workDescription');
+            if (!workDesc || !workDesc.value.trim()) {
+                errors.push('Work description is required');
+            }
+
+            // For standalone quotations, check additional fields
+            if (isStandalone) {
+                const vehicleReg = document.getElementById('vehicleRegistration');
+                const customerName = document.getElementById('customerName');
+                const problemDesc = document.getElementById('problemDescription');
+
+                if (!vehicleReg || !vehicleReg.value.trim()) {
+                    errors.push('Vehicle registration number is required');
+                }
+                if (!customerName || !customerName.value.trim()) {
+                    errors.push('Customer name is required');
+                }
+                if (!problemDesc || !problemDesc.value.trim()) {
+                    errors.push('Problem description is required');
+                }
+            }
+
+            return errors;
+        }
+
+        function previewQuotation(isStandalone = false) {
+            // Validate form first
+            const errors = validateQuotationForm(isStandalone);
+            if (errors.length > 0) {
+                Material.showSnackbar(errors[0], 'error');
+                return;
+            }
+
+            // Sync customer fields for standalone
+            if (isStandalone) {
+                syncCustomerFields();
+            }
+
+            // Collect form data
+            const quotationForm = document.getElementById('quotationForm');
+            const formData = new FormData(quotationForm);
+
+            // Add preview-specific data
+            formData.set('action', 'preview');
+            formData.set('quotation_type', isStandalone ? 'standalone' : 'regular');
+
+            // Show loading state
+            openPreviewModal();
+            const previewContent = document.getElementById('previewContent');
+            previewContent.innerHTML = `
+                <div class="flex items-center justify-center h-full text-gray-500">
+                    <div class="text-center">
+                        <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2"></div>
+                        <p>Generating preview...</p>
+                    </div>
+                </div>
+            `;
+
+            // Make the preview request
+            fetch('../api/quotation_creator.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (response.ok) {
+                    return response.text();
+                } else {
+                    return response.json().then(data => {
+                        throw new Error(data.error || 'Failed to generate preview');
+                    });
+                }
+            })
+            .then(html => {
+                // Create an iframe to display the preview
+                const iframe = document.createElement('iframe');
+                iframe.style.width = '100%';
+                iframe.style.height = '600px';
+                iframe.style.border = 'none';
+                iframe.style.borderRadius = '8px';
+
+                previewContent.innerHTML = '';
+                previewContent.appendChild(iframe);
+
+                // Write the HTML content to the iframe
+                iframe.contentDocument.open();
+                iframe.contentDocument.write(html);
+                iframe.contentDocument.close();
+            })
+            .catch(error => {
+                console.error('Preview error:', error);
+                previewContent.innerHTML = `
+                    <div class="flex items-center justify-center h-full text-red-500">
+                        <div class="text-center">
+                            <span class="material-icons text-4xl mb-2">error</span>
+                            <p>Failed to generate preview</p>
+                            <p class="text-sm mt-1">${error.message}</p>
+                        </div>
+                    </div>
+                `;
+                Material.showSnackbar('Failed to generate preview: ' + error.message, 'error');
+            });
+        }
+
+        // Add event listeners for preview buttons
+        document.addEventListener('DOMContentLoaded', function() {
+            // Standalone quotation preview button
+            const previewBtnStandalone = document.getElementById('previewQuotationBtn');
+            if (previewBtnStandalone) {
+                previewBtnStandalone.addEventListener('click', function() {
+                    previewQuotation(true);
+                });
+            }
+
+            // Regular quotation preview button
+            const previewBtnRegular = document.getElementById('previewQuotationBtnRegular');
+            if (previewBtnRegular) {
+                previewBtnRegular.addEventListener('click', function() {
+                    previewQuotation(false);
+                });
+            }
+
+            // Close modal on escape key
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && document.getElementById('previewModal').style.display !== 'none') {
+                    closePreviewModal();
+                }
+            });
         });
     </script>
 </body>
