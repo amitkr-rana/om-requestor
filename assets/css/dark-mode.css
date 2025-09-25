@@ -142,6 +142,9 @@ input[type="text"],
 input[type="email"],
 input[type="password"],
 input[type="number"],
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"],
 select,
 textarea {
   background-color: var(--bg-input) !important;
@@ -153,6 +156,9 @@ input[type="text"]:focus,
 input[type="email"]:focus,
 input[type="password"]:focus,
 input[type="number"]:focus,
+input[type="date"]:focus,
+input[type="time"]:focus,
+input[type="datetime-local"]:focus,
 select:focus,
 textarea:focus {
   border-color: var(--border-focus) !important;
@@ -368,6 +374,32 @@ th, td {
 /* Placeholder text */
 [data-theme="dark"] ::placeholder {
   color: var(--text-tertiary) !important;
+}
+
+/* Date input specific styling */
+[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+[data-theme="dark"] input[type="time"]::-webkit-calendar-picker-indicator,
+[data-theme="dark"] input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+/* Date input inner shadow fix for dark mode */
+[data-theme="dark"] input[type="date"]::-webkit-datetime-edit-text,
+[data-theme="dark"] input[type="date"]::-webkit-datetime-edit-month-field,
+[data-theme="dark"] input[type="date"]::-webkit-datetime-edit-day-field,
+[data-theme="dark"] input[type="date"]::-webkit-datetime-edit-year-field {
+  color: var(--text-primary) !important;
 }
 
 /* Loading states */

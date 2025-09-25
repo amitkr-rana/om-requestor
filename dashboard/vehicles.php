@@ -124,57 +124,75 @@ include '../includes/admin_head.php';
                                     </div>
                                 </div>
                             </div>
-                        </div>
 
-                        <!-- Action Button -->
-                        <div class="mb-6">
-                            <button type="button" onclick="document.getElementById('createVehicleModal').style.display='block'" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2">
-                                <span class="material-icons">add</span>
-                                <span>Add Vehicle</span>
-                            </button>
-                        </div>
-
-                        <!-- Filters -->
-                        <div class="bg-white rounded-lg border border-blue-100 p-6 mb-6">
-                            <form method="GET" action="" class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                                <div>
-                                    <label for="search" class="block text-sm font-medium text-blue-900 mb-2">Search Vehicles</label>
-                                    <div class="relative">
-                                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                            <span class="material-icons text-blue-400 text-sm">search</span>
-                                        </div>
-                                        <input type="text" id="search" name="search" value="<?php echo htmlspecialchars($search); ?>" placeholder="Search by registration or owner..." class="pl-10 w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            <div class="bg-white rounded-lg p-4 border border-orange-100 shadow-sm">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center">
+                                        <span class="material-icons text-orange-600 text-lg">schedule</span>
+                                    </div>
+                                    <div>
+                                        <p class="text-orange-600 text-xs font-medium uppercase tracking-wide">Recent Additions</p>
+                                        <p class="text-orange-900 text-xl font-bold"><?php
+                                            // Count vehicles added in the last 30 days
+                                            $recentCount = 0;
+                                            $thirtyDaysAgo = date('Y-m-d H:i:s', strtotime('-30 days'));
+                                            foreach ($vehicles as $vehicle) {
+                                                if ($vehicle['created_at'] >= $thirtyDaysAgo) {
+                                                    $recentCount++;
+                                                }
+                                            }
+                                            echo $recentCount;
+                                        ?></p>
                                     </div>
                                 </div>
-                                <div>
-                                    <label for="user" class="block text-sm font-medium text-blue-900 mb-2">Vehicle Owner</label>
-                                    <select id="user" name="user" class="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                                        <option value="">All Owners</option>
-                                        <?php foreach ($usersForDropdown as $user): ?>
-                                            <option value="<?php echo $user['id']; ?>" <?php echo $user_filter == $user['id'] ? 'selected' : ''; ?>>
-                                                <?php echo htmlspecialchars($user['full_name'] . ' (' . $user['username'] . ')'); ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                </div>
-                                <div class="flex gap-2">
-                                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2">
-                                        <span class="material-icons text-sm">filter_list</span>
-                                        <span>Filter</span>
+                            </div>
+                        </div>
+
+                        <!-- Filters and Actions -->
+                        <div class="bg-white rounded-lg border border-blue-100 shadow-sm mb-6">
+                            <div class="p-4 border-b border-blue-100">
+                                <div class="flex justify-between items-center">
+                                    <h2 class="text-blue-900 text-lg font-semibold">Filters</h2>
+                                    <button type="button" onclick="document.getElementById('createVehicleModal').style.display='block'" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2">
+                                        <span class="material-icons text-sm">add</span>
+                                        Add Vehicle
                                     </button>
-                                    <a href="vehicles.php" class="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2">
-                                        <span class="material-icons text-sm">clear</span>
-                                        <span>Clear</span>
-                                    </a>
                                 </div>
-                            </form>
+                            </div>
+
+                            <!-- Filters -->
+                            <div class="p-4 bg-gray-50">
+                                <form method="GET" action="" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                    <div>
+                                        <label for="search" class="block text-sm font-medium text-blue-900 mb-2">Search</label>
+                                        <input type="text" id="search" name="search" value="<?php echo htmlspecialchars($search); ?>"
+                                               placeholder="Search by registration or owner..."
+                                               class="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                    </div>
+                                    <div>
+                                        <label for="user" class="block text-sm font-medium text-blue-900 mb-2">Vehicle Owner</label>
+                                        <select id="user" name="user" class="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                            <option value="">All Owners</option>
+                                            <?php foreach ($usersForDropdown as $user): ?>
+                                                <option value="<?php echo $user['id']; ?>" <?php echo $user_filter == $user['id'] ? 'selected' : ''; ?>>
+                                                    <?php echo htmlspecialchars($user['full_name'] . ' (' . $user['username'] . ')'); ?>
+                                                </option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                    <div class="flex items-end gap-2">
+                                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2">
+                                            <span class="material-icons text-sm">search</span>
+                                            Search
+                                        </button>
+                                        <a href="vehicles.php" class="border border-blue-200 hover:bg-blue-50 text-blue-700 px-4 py-2 rounded-lg font-medium">Clear</a>
+                                    </div>
+                                </form>
+                            </div>
                         </div>
 
                         <!-- Vehicles Table -->
-                        <div class="bg-white rounded-lg border border-blue-100">
-                            <div class="p-6 border-b border-blue-100">
-                                <h2 class="text-blue-900 text-xl font-semibold">Vehicles (<?php echo $totalVehicles; ?>)</h2>
-                            </div>
+                        <div class="bg-white rounded-lg border border-blue-100 shadow-sm">
                             <div class="overflow-x-auto">
                                 <table class="w-full">
                                     <thead class="bg-blue-50">
@@ -276,6 +294,53 @@ include '../includes/admin_head.php';
         </div>
     </div>
 
+    <!-- Edit Vehicle Modal -->
+    <div id="editVehicleModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white rounded-lg shadow-lg max-w-md w-full">
+                <div class="p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-semibold text-blue-900">Edit Vehicle</h3>
+                        <button onclick="document.getElementById('editVehicleModal').style.display='none'" class="text-gray-400 hover:text-gray-600">
+                            <span class="material-icons">close</span>
+                        </button>
+                    </div>
+                    <form id="editVehicleForm" onsubmit="updateVehicle(event)">
+                        <input type="hidden" id="edit_vehicle_id" name="vehicle_id">
+
+                        <div class="mb-4">
+                            <label for="edit_registration_number" class="block text-sm font-medium text-blue-900 mb-2">Registration Number</label>
+                            <input type="text" id="edit_registration_number" name="registration_number" required placeholder="e.g., DL01AB1234" class="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+
+                        <?php if ($_SESSION['role'] === 'admin'): ?>
+                        <div class="mb-4">
+                            <label for="edit_user_id" class="block text-sm font-medium text-blue-900 mb-2">Vehicle Owner</label>
+                            <select id="edit_user_id" name="user_id" required class="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                <option value="">Select Owner</option>
+                                <?php foreach ($usersForDropdown as $user): ?>
+                                    <option value="<?php echo $user['id']; ?>">
+                                        <?php echo htmlspecialchars($user['full_name'] . ' (' . $user['username'] . ')'); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <?php endif; ?>
+
+                        <div class="flex justify-end gap-2">
+                            <button type="button" onclick="document.getElementById('editVehicleModal').style.display='none'" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
+                                Cancel
+                            </button>
+                            <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                                Update Vehicle
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
     async function createVehicle(event) {
         event.preventDefault();
@@ -305,9 +370,70 @@ include '../includes/admin_head.php';
         }
     }
 
-    function editVehicle(id, registrationNumber) {
-        // For now, just show an alert - can be enhanced later
-        alert('Edit functionality for vehicle ' + registrationNumber + ' (ID: ' + id + ') would be implemented here');
+    async function editVehicle(id, registrationNumber) {
+        try {
+            // Fetch vehicle data
+            const response = await fetch(`../api/vehicles.php?action=get&id=${id}`);
+            const result = await response.json();
+
+            if (result.error) {
+                alert(result.error);
+                return;
+            }
+
+            if (!result.success || !result.vehicle) {
+                alert('Failed to load vehicle data');
+                return;
+            }
+
+            const vehicle = result.vehicle;
+
+            // Populate edit form
+            document.getElementById('edit_vehicle_id').value = vehicle.id || '';
+            document.getElementById('edit_registration_number').value = vehicle.registration_number || '';
+
+            // Set owner if user selector exists (admin only)
+            const userSelect = document.getElementById('edit_user_id');
+            if (userSelect && vehicle.user_id) {
+                userSelect.value = vehicle.user_id;
+            }
+
+            // Show modal
+            document.getElementById('editVehicleModal').style.display = 'block';
+
+        } catch (error) {
+            console.error('Error loading vehicle data:', error);
+            alert('Failed to load vehicle data');
+        }
+    }
+
+    async function updateVehicle(event) {
+        event.preventDefault();
+
+        const form = event.target;
+        const formData = new FormData(form);
+        formData.append('action', 'update');
+        formData.append('csrf_token', '<?php echo generateCSRFToken(); ?>');
+
+        try {
+            const response = await fetch('../api/vehicles.php', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                alert('Vehicle updated successfully!');
+                document.getElementById('editVehicleModal').style.display = 'none';
+                location.reload();
+            } else {
+                alert(result.error || 'Failed to update vehicle');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Network error occurred');
+        }
     }
 
     async function deleteVehicle(id, registrationNumber) {
