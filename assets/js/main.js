@@ -100,7 +100,7 @@ class OMRequestor {
 
     async submitForm(form) {
         const formData = new FormData(form);
-        const action = form.action || form.getAttribute('data-action');
+        const action = form.getAttribute('action') || form.getAttribute('data-action');
 
         if (!action) {
             Material.showSnackbar('Form action not specified', 'error');
@@ -114,6 +114,13 @@ class OMRequestor {
                 method: 'POST',
                 body: formData
             });
+
+            // Check if response is ok
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('HTTP Error:', response.status, response.statusText, errorText);
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
 
             const result = await response.json();
 
@@ -150,7 +157,7 @@ class OMRequestor {
         } catch (error) {
             Material.hideLoading();
             console.error('Form submission error:', error);
-            Material.showSnackbar('Network error occurred', 'error');
+            Material.showSnackbar('Network error: ' + error.message, 'error');
         }
     }
 

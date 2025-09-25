@@ -25,40 +25,50 @@ if ($_SESSION['organization_id'] != 2) { // If not Om Engineers system admin
 if ($status_filter) {
     switch ($status_filter) {
         case 'pending_to_be_sent':
-            $conditions[] = "(a.quotation_id IS NULL OR a.status IS NULL)";
+            $conditions[] = "sr.status = 'pending'";
             break;
         case 'sent_for_approval':
-            $conditions[] = "a.status = 'pending'";
+            $conditions[] = "sr.status = 'quoted'";
             break;
         case 'approved':
-            $conditions[] = "a.status = 'approved'";
+            $conditions[] = "sr.status = 'approved'";
             break;
         case 'rejected':
-            $conditions[] = "a.status = 'rejected'";
+            $conditions[] = "sr.status = 'rejected'";
             break;
     }
 }
 
 if ($date_from) {
-    $conditions[] = "DATE(q.created_at) >= ?";
+    $conditions[] = "DATE(sr.created_at) >= ?";
     $params[] = $date_from;
 }
 
 if ($date_to) {
-    $conditions[] = "DATE(q.created_at) <= ?";
+    $conditions[] = "DATE(sr.created_at) <= ?";
     $params[] = $date_to;
 }
 
 $whereClause = implode(' AND ', $conditions);
 
-// Get total count with safe array access
+// Get quotation statistics for dashboard cards
+$statsConditions = ["1=1"];
+$statsParams = [];
+
+// Organization filtering for statistics (same as main query)
+if ($_SESSION['organization_id'] != 2) { // If not Om Engineers system admin
+    $statsConditions[] = "u.organization_id = ?";
+    $statsParams[] = $_SESSION['organization_id'];
+}
+
+$statsWhereClause = implode(' AND ', $statsConditions);
+
+// Get total count for dashboard tile (all service requests = all quotations in your workflow)
 $totalQuotationsResult = $db->fetch(
-    "SELECT COUNT(*) as count FROM quotations q
-     JOIN service_requests sr ON q.request_id = sr.id
+    "SELECT COUNT(*) as count FROM service_requests sr
      JOIN users u ON sr.user_id = u.id
-     LEFT JOIN approvals a ON q.id = a.quotation_id
-     WHERE {$whereClause}",
-    $params
+     WHERE {$statsWhereClause}",
+    $statsParams
 );
 $totalQuotations = $totalQuotationsResult ? $totalQuotationsResult['count'] : 0;
 
@@ -103,55 +113,38 @@ $pendingRequests = $db->fetchAll(
 // Get approvers for sending quotations
 $approvers = getUsers($_SESSION['organization_id'], 'approver');
 
-// Get quotation statistics for dashboard cards
-$statsConditions = ["1=1"];
-$statsParams = [];
-
-// Organization filtering for statistics (same as main query)
-if ($_SESSION['organization_id'] != 2) { // If not Om Engineers system admin
-    $statsConditions[] = "u.organization_id = ?";
-    $statsParams[] = $_SESSION['organization_id'];
-}
-
-$statsWhereClause = implode(' AND ', $statsConditions);
-
-// Count quotations by status - using approval_status instead of quotation status for more accurate tracking
+// Count pending quotations (service requests with status 'pending')
 $pendingToBeSentResult = $db->fetch(
-    "SELECT COUNT(*) as count FROM quotations q
-     JOIN service_requests sr ON q.request_id = sr.id
+    "SELECT COUNT(*) as count FROM service_requests sr
      JOIN users u ON sr.user_id = u.id
-     LEFT JOIN approvals a ON q.id = a.quotation_id
-     WHERE {$statsWhereClause} AND (a.quotation_id IS NULL OR a.status IS NULL)",
+     WHERE {$statsWhereClause} AND sr.status = 'pending'",
     $statsParams
 );
 $pendingToBeSent = $pendingToBeSentResult ? $pendingToBeSentResult['count'] : 0;
 
+// Count sent quotations (service requests with status 'quoted')
 $sentForApprovalResult = $db->fetch(
-    "SELECT COUNT(*) as count FROM quotations q
-     JOIN service_requests sr ON q.request_id = sr.id
+    "SELECT COUNT(*) as count FROM service_requests sr
      JOIN users u ON sr.user_id = u.id
-     JOIN approvals a ON q.id = a.quotation_id
-     WHERE {$statsWhereClause} AND a.status = 'pending'",
+     WHERE {$statsWhereClause} AND sr.status = 'quoted'",
     $statsParams
 );
 $sentForApproval = $sentForApprovalResult ? $sentForApprovalResult['count'] : 0;
 
+// Count approved quotations (service requests with status 'approved')
 $approvedQuotationsResult = $db->fetch(
-    "SELECT COUNT(*) as count FROM quotations q
-     JOIN service_requests sr ON q.request_id = sr.id
+    "SELECT COUNT(*) as count FROM service_requests sr
      JOIN users u ON sr.user_id = u.id
-     JOIN approvals a ON q.id = a.quotation_id
-     WHERE {$statsWhereClause} AND a.status = 'approved'",
+     WHERE {$statsWhereClause} AND sr.status = 'approved'",
     $statsParams
 );
 $approvedQuotations = $approvedQuotationsResult ? $approvedQuotationsResult['count'] : 0;
 
+// Count rejected quotations (service requests with status 'rejected')
 $rejectedQuotationsResult = $db->fetch(
-    "SELECT COUNT(*) as count FROM quotations q
-     JOIN service_requests sr ON q.request_id = sr.id
+    "SELECT COUNT(*) as count FROM service_requests sr
      JOIN users u ON sr.user_id = u.id
-     JOIN approvals a ON q.id = a.quotation_id
-     WHERE {$statsWhereClause} AND a.status = 'rejected'",
+     WHERE {$statsWhereClause} AND sr.status = 'rejected'",
     $statsParams
 );
 $rejectedQuotations = $rejectedQuotationsResult ? $rejectedQuotationsResult['count'] : 0;
@@ -254,10 +247,10 @@ include '../includes/admin_head.php';
                             <div class="p-4 border-b border-blue-100">
                                 <div class="flex justify-between items-center">
                                     <h2 class="text-blue-900 text-lg font-semibold">Filters</h2>
-                                    <button type="button" onclick="document.getElementById('createQuotationModal').style.display='block'" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2">
+                                    <a href="quotation_creator.php" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2">
                                         <span class="material-icons text-sm">add</span>
                                         Quick Quotation
-                                    </button>
+                                    </a>
                                 </div>
                             </div>
 
@@ -323,10 +316,10 @@ include '../includes/admin_head.php';
                                                     <td class="px-6 py-4 text-blue-600 text-sm max-w-xs truncate"><?php echo htmlspecialchars(substr($request['problem_description'], 0, 50)); ?>...</td>
                                                     <td class="px-6 py-4 text-blue-600 text-sm"><?php echo date('M d, Y', strtotime($request['created_at'])); ?></td>
                                                     <td class="px-6 py-4">
-                                                        <button type="button" onclick="createQuotationFor(<?php echo $request['id']; ?>, '<?php echo htmlspecialchars($request['registration_number']); ?>', '<?php echo htmlspecialchars($request['problem_description']); ?>')" class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition-colors flex items-center gap-1">
+                                                        <a href="quotation_creator.php?action=create&request_id=<?php echo $request['id']; ?>" class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition-colors inline-flex items-center gap-1">
                                                             <span class="material-icons text-sm">receipt_long</span>
                                                             <span>Create Quote</span>
-                                                        </button>
+                                                        </a>
                                                     </td>
                                                 </tr>
                                             <?php endforeach; ?>
@@ -336,186 +329,12 @@ include '../includes/admin_head.php';
                             </div>
                         <?php endif; ?>
 
-                        <!-- Quotations Table -->
-                        <div class="bg-white rounded-lg border border-blue-100 shadow-sm">
-                            <div class="overflow-x-auto">
-                                <table class="w-full">
-                                    <thead class="bg-blue-50">
-                                        <tr>
-                                            <th class="text-left px-4 py-3 text-blue-900 font-medium text-sm">ID</th>
-                                            <th class="text-left px-4 py-3 text-blue-900 font-medium text-sm">Vehicle</th>
-                                            <th class="text-left px-4 py-3 text-blue-900 font-medium text-sm">Requestor</th>
-                                            <th class="text-left px-4 py-3 text-blue-900 font-medium text-sm">Amount</th>
-                                            <th class="text-left px-4 py-3 text-blue-900 font-medium text-sm">Status</th>
-                                            <th class="text-left px-4 py-3 text-blue-900 font-medium text-sm">Approver</th>
-                                            <th class="text-left px-4 py-3 text-blue-900 font-medium text-sm">Created</th>
-                                            <th class="text-left px-4 py-3 text-blue-900 font-medium text-sm">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody class="divide-y divide-blue-100">
-                                        <?php if (empty($quotations)): ?>
-                                            <tr>
-                                                <td colspan="8" class="text-center py-8 text-gray-500">
-                                                    <div class="flex flex-col items-center gap-2">
-                                                        <span class="material-icons text-4xl text-gray-300">receipt_long</span>
-                                                        <p>No quotations found</p>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        <?php else: ?>
-                                            <?php foreach ($quotations as $quotation): ?>
-                                                <tr class="border-t border-blue-100 hover:bg-blue-50">
-                                                    <td class="px-4 py-3 text-blue-900 font-medium">#<?php echo $quotation['id']; ?></td>
-                                                    <td class="px-4 py-3 text-blue-700"><?php echo htmlspecialchars($quotation['registration_number']); ?></td>
-                                                    <td class="px-4 py-3 text-blue-700"><?php echo htmlspecialchars($quotation['requestor_name']); ?></td>
-                                                    <td class="px-4 py-3 text-blue-900 font-medium">$<?php echo number_format($quotation['amount'], 2); ?></td>
-                                                    <td class="px-4 py-3">
-                                                        <?php
-                                                        $status = $quotation['approval_status'];
-                                                        $statusDisplay = '';
-                                                        $statusClass = '';
-
-                                                        if (!$status) {
-                                                            $statusDisplay = 'Pending';
-                                                            $statusClass = 'bg-yellow-100 text-yellow-800';
-                                                        } elseif ($status === 'pending') {
-                                                            $statusDisplay = 'Sent';
-                                                            $statusClass = 'bg-orange-100 text-orange-800';
-                                                        } elseif ($status === 'approved') {
-                                                            $statusDisplay = 'Approved';
-                                                            $statusClass = 'bg-green-100 text-green-800';
-                                                        } elseif ($status === 'rejected') {
-                                                            $statusDisplay = 'Rejected';
-                                                            $statusClass = 'bg-red-100 text-red-800';
-                                                        } else {
-                                                            $statusDisplay = ucfirst($status);
-                                                            $statusClass = 'bg-gray-100 text-gray-800';
-                                                        }
-                                                        ?>
-                                                        <span class="px-2 py-1 <?php echo $statusClass; ?> rounded-full text-xs font-medium">
-                                                            <?php echo $statusDisplay; ?>
-                                                        </span>
-                                                    </td>
-                                                    <td class="px-4 py-3 text-blue-700">
-                                                        <?php if ($quotation['approver_name']): ?>
-                                                            <?php echo htmlspecialchars($quotation['approver_name']); ?>
-                                                        <?php else: ?>
-                                                            <span class="text-blue-400">Not assigned</span>
-                                                        <?php endif; ?>
-                                                    </td>
-                                                    <td class="px-4 py-3 text-blue-700 text-sm"><?php echo formatDate($quotation['created_at'], 'd/m/Y'); ?></td>
-                                                    <td class="px-4 py-3">
-                                                        <div class="flex items-center gap-2">
-                                                            <button type="button" onclick="viewQuotation(<?php echo $quotation['id']; ?>)" class="text-blue-600 hover:text-blue-800 p-1" title="View quotation">
-                                                                <span class="material-icons text-sm">visibility</span>
-                                                            </button>
-                                                            <?php if (!$quotation['approval_status'] || $quotation['approval_status'] === 'pending'): ?>
-                                                                <button type="button" onclick="editQuotation(<?php echo $quotation['id']; ?>)" class="text-orange-600 hover:text-orange-800 p-1" title="Edit quotation">
-                                                                    <span class="material-icons text-sm">edit</span>
-                                                                </button>
-                                                            <?php endif; ?>
-                                                            <?php if (!$quotation['approver_name']): ?>
-                                                                <button type="button" onclick="sendToApprover(<?php echo $quotation['id']; ?>)" class="text-green-600 hover:text-green-800 p-1" title="Send to approver">
-                                                                    <span class="material-icons text-sm">send</span>
-                                                                </button>
-                                                            <?php endif; ?>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            <?php endforeach; ?>
-                                        <?php endif; ?>
-                                    </tbody>
-                                </table>
-                            </div>
-
-                            <!-- Pagination -->
-                            <?php if ($pagination['total_pages'] > 1): ?>
-                                <div class="p-6 border-t border-blue-100">
-                                    <div class="flex justify-between items-center">
-                                        <span class="text-blue-600 text-sm">
-                                            Showing <?php echo ($offset + 1); ?> to <?php echo min($offset + $limit, $totalQuotations); ?> of <?php echo $totalQuotations; ?> quotations
-                                        </span>
-                                        <div class="flex gap-2">
-                                            <?php if ($page > 1): ?>
-                                                <a href="?page=<?php echo $page - 1; ?>&<?php echo http_build_query(array_filter($_GET, fn($k) => $k !== 'page', ARRAY_FILTER_USE_KEY)); ?>" class="bg-gray-100 text-gray-600 px-3 py-1 rounded hover:bg-gray-200 transition-colors flex items-center gap-1">
-                                                    <span class="material-icons text-sm">chevron_left</span>
-                                                </a>
-                                            <?php endif; ?>
-
-                                            <?php for ($i = max(1, $page - 2); $i <= min($pagination['total_pages'], $page + 2); $i++): ?>
-                                                <a href="?page=<?php echo $i; ?>&<?php echo http_build_query(array_filter($_GET, fn($k) => $k !== 'page', ARRAY_FILTER_USE_KEY)); ?>" class="px-3 py-1 rounded text-sm transition-colors <?php echo $i === $page ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'; ?>">
-                                                    <?php echo $i; ?>
-                                                </a>
-                                            <?php endfor; ?>
-
-                                            <?php if ($page < $pagination['total_pages']): ?>
-                                                <a href="?page=<?php echo $page + 1; ?>&<?php echo http_build_query(array_filter($_GET, fn($k) => $k !== 'page', ARRAY_FILTER_USE_KEY)); ?>" class="bg-gray-100 text-gray-600 px-3 py-1 rounded hover:bg-gray-200 transition-colors flex items-center gap-1">
-                                                    <span class="material-icons text-sm">chevron_right</span>
-                                                </a>
-                                            <?php endif; ?>
-                                        </div>
-                                    </div>
-                                </div>
-                            <?php endif; ?>
-                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Create Quotation Modal -->
-    <div id="createQuotationModal" class="modal-overlay" style="display: none;">
-        <div class="modal">
-            <div class="modal-header">
-                <h3 class="modal-title">Create Quotation</h3>
-                <button type="button" class="modal-close">
-                    <span class="material-icons">close</span>
-                </button>
-            </div>
-            <form id="createQuotationForm" data-ajax action="../api/quotations.php" data-reset-on-success data-reload-on-success>
-                <div class="modal-content">
-                    <input type="hidden" name="action" value="create">
-                    <input type="hidden" id="create_request_id" name="request_id">
-                    <?php echo csrfField(); ?>
-
-                    <div class="alert alert-info">
-                        <span class="material-icons">info</span>
-                        <div>
-                            <strong id="request_vehicle_info"></strong>
-                            <p id="request_problem_info" class="text-muted"></p>
-                        </div>
-                    </div>
-
-                    <div class="input-field">
-                        <input type="number" id="create_amount" name="amount" required min="1" step="0.01">
-                        <label for="create_amount">Quotation Amount (₹)</label>
-                    </div>
-
-                    <div class="input-field">
-                        <textarea id="create_work_description" name="work_description" required rows="4"></textarea>
-                        <label for="create_work_description">Work Description</label>
-                    </div>
-
-                    <div class="input-field">
-                        <select id="create_send_to_approver" name="send_to_approver">
-                            <option value="">Select Approver (Optional)</option>
-                            <?php foreach ($approvers as $approver): ?>
-                                <option value="<?php echo $approver['id']; ?>">
-                                    <?php echo htmlspecialchars($approver['full_name']); ?> (<?php echo htmlspecialchars($approver['email']); ?>)
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                        <label for="create_send_to_approver">Send to Approver</label>
-                    </div>
-                </div>
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-text" data-close-modal>Cancel</button>
-                    <button type="submit" class="btn btn-primary">Create Quotation</button>
-                </div>
-            </form>
-        </div>
-    </div>
 
     <!-- Send to Approver Modal -->
     <div id="sendToApproverModal" class="modal-overlay" style="display: none;">
@@ -555,12 +374,6 @@ include '../includes/admin_head.php';
     <script src="../assets/js/material.js"></script>
     <script src="../assets/js/main.js"></script>
     <script>
-        function createQuotationFor(requestId, vehicle, problem) {
-            document.getElementById('create_request_id').value = requestId;
-            document.getElementById('request_vehicle_info').textContent = `Vehicle: ${vehicle}`;
-            document.getElementById('request_problem_info').textContent = `Problem: ${problem}`;
-            Material.openModal('createQuotationModal');
-        }
 
         function sendToApprover(quotationId) {
             document.getElementById('send_quotation_id').value = quotationId;
@@ -577,12 +390,6 @@ include '../includes/admin_head.php';
             alert('Edit quotation functionality will be implemented');
         }
 
-        // Modal handling
-        document.getElementById('createQuotationModal').addEventListener('click', function(e) {
-            if (e.target === this) {
-                this.style.display = 'none';
-            }
-        });
     </script>
 </body>
 </html>

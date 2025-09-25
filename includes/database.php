@@ -57,6 +57,18 @@ class Database {
         $stmt = $this->query($sql, $params);
         return $stmt ? $stmt->rowCount() : 0;
     }
+
+    public function beginTransaction() {
+        return $this->connect()->beginTransaction();
+    }
+
+    public function commit() {
+        return $this->connect()->commit();
+    }
+
+    public function rollback() {
+        return $this->connect()->rollback();
+    }
 }
 
 // Global database instance

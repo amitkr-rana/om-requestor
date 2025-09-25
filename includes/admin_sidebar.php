@@ -30,6 +30,10 @@ if (!isset($organizationName)) {
                     <span class="material-icons text-xl">receipt</span>
                     <p class="text-sm font-medium leading-normal">Quotations</p>
                 </a>
+                <a href="quotation_creator.php" class="flex items-center gap-3 px-4 py-3 rounded-lg <?php echo $currentPage === 'quotation_creator' ? 'bg-blue-100 text-blue-700' : 'text-blue-600 hover:bg-blue-50'; ?> transition-colors">
+                    <span class="material-icons text-xl">add_business</span>
+                    <p class="text-sm font-medium leading-normal">Quotation Creator</p>
+                </a>
                 <a href="vehicles.php" class="flex items-center gap-3 px-4 py-3 rounded-lg <?php echo $currentPage === 'vehicles' ? 'bg-blue-100 text-blue-700' : 'text-blue-600 hover:bg-blue-50'; ?> transition-colors">
                     <span class="material-icons text-xl">directions_car</span>
                     <p class="text-sm font-medium leading-normal">Vehicles</p>
