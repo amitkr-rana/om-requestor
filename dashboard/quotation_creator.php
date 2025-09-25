@@ -126,7 +126,7 @@ include '../includes/admin_head.php';
                 <div class="layout-content-container flex flex-col flex-1 overflow-y-auto">
                     <?php include '../includes/admin_header.php'; ?>
 
-                    <div class="p-6">
+                    <div id="mainContent" class="p-6">
                         <?php
                         // Check if database needs updating
                         $columns = $db->fetchAll("DESCRIBE quotations");
@@ -588,6 +588,29 @@ include '../includes/admin_head.php';
                             <?php endif; ?>
                         <?php endif; ?>
                     </div>
+
+                    <!-- Preview Content Area (Hidden by default) -->
+                    <div id="previewContent" style="display: none; position: relative; height: calc(100vh - 140px);">
+                        <!-- Floating Action Buttons -->
+                        <div class="fixed top-20 right-6 z-50 flex flex-col gap-2">
+                            <button type="button" onclick="printPreview()" class="inline-flex items-center justify-center w-12 h-12 text-blue-700 bg-white border border-blue-200 rounded-full shadow-lg hover:bg-blue-50 transition-all duration-200" title="Print Preview">
+                                <span class="material-icons text-lg">print</span>
+                            </button>
+                            <button type="button" onclick="closePreview()" class="inline-flex items-center justify-center w-12 h-12 text-gray-700 bg-white border border-gray-300 rounded-full shadow-lg hover:bg-gray-50 transition-all duration-200" title="Back to Form">
+                                <span class="material-icons text-lg">arrow_back</span>
+                            </button>
+                        </div>
+
+                        <div id="previewIframeContainer" class="w-full h-full">
+                            <!-- Preview iframe will be loaded here -->
+                            <div class="flex items-center justify-center h-full text-gray-500 bg-gray-50">
+                                <div class="text-center">
+                                    <span class="material-icons text-4xl mb-2">description</span>
+                                    <p>Loading preview...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -626,53 +649,6 @@ include '../includes/admin_head.php';
         </div>
     </div>
 
-    <!-- Quotation Preview Modal -->
-    <div id="previewModal" class="fixed inset-0 z-50 overflow-y-auto" style="display: none;">
-        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center">
-            <!-- Background overlay -->
-            <div class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onclick="closePreviewModal()"></div>
-
-            <!-- Modal panel -->
-            <div class="relative inline-block w-full max-w-6xl p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-2xl">
-                <!-- Modal header -->
-                <div class="flex items-center justify-between pb-4 border-b border-gray-200">
-                    <div class="flex items-center gap-3">
-                        <span class="material-icons text-green-600">visibility</span>
-                        <h3 class="text-lg font-medium text-gray-900">Quotation Preview</h3>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <button type="button" onclick="printPreview()" class="inline-flex items-center px-3 py-2 text-sm font-medium text-blue-700 bg-blue-100 border border-transparent rounded-md hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                            <span class="material-icons text-sm mr-1">print</span>
-                            Print
-                        </button>
-                        <button type="button" onclick="closePreviewModal()" class="inline-flex items-center p-2 text-gray-400 bg-transparent border-0 rounded-lg hover:bg-gray-200 hover:text-gray-900">
-                            <span class="material-icons">close</span>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Modal content -->
-                <div class="mt-4">
-                    <div id="previewContent" class="w-full border border-gray-300 rounded-lg" style="height: 70vh;">
-                        <!-- Preview iframe will be loaded here -->
-                        <div class="flex items-center justify-center h-full text-gray-500">
-                            <div class="text-center">
-                                <span class="material-icons text-4xl mb-2">description</span>
-                                <p>Loading preview...</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Modal actions -->
-                <div class="flex justify-end gap-3 pt-4 mt-4 border-t border-gray-200">
-                    <button type="button" onclick="closePreviewModal()" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                        Close
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <!-- JavaScript for dynamic form functionality -->
     <script src="../assets/js/material.js"></script>
@@ -894,30 +870,73 @@ include '../includes/admin_head.php';
         });
 
         // Quotation Preview functionality
-        function openPreviewModal() {
-            document.getElementById('previewModal').style.display = 'block';
-            document.body.style.overflow = 'hidden'; // Prevent background scrolling
+        let originalPageTitle = '';
+        let currentPreviewData = null;
+        let isPreviewMode = false;
+
+        function showPreview() {
+            // Store original title and update main header (not sidebar)
+            const headerTitle = document.querySelector('h1.text-blue-900.text-3xl.font-bold');
+            if (headerTitle) {
+                originalPageTitle = headerTitle.textContent;
+                headerTitle.textContent = 'Quotation Preview';
+            }
+
+            // Hide the main content
+            const mainContent = document.getElementById('mainContent');
+            if (mainContent) {
+                mainContent.style.display = 'none';
+            }
+
+            // Show the preview content
+            const previewContent = document.getElementById('previewContent');
+            if (previewContent) {
+                previewContent.style.display = 'block';
+            }
+
+            // Set preview mode flag
+            isPreviewMode = true;
         }
 
-        function closePreviewModal() {
-            const modal = document.getElementById('previewModal');
-            modal.style.display = 'none';
-            document.body.style.overflow = 'auto'; // Restore scrolling
+        function closePreview() {
+            // Restore original title (main header only, not sidebar)
+            const headerTitle = document.querySelector('h1.text-blue-900.text-3xl.font-bold');
+            if (headerTitle && originalPageTitle) {
+                headerTitle.textContent = originalPageTitle;
+            }
 
-            // Clear the preview content
+            // Hide the preview content
             const previewContent = document.getElementById('previewContent');
-            previewContent.innerHTML = `
-                <div class="flex items-center justify-center h-full text-gray-500">
-                    <div class="text-center">
-                        <span class="material-icons text-4xl mb-2">description</span>
-                        <p>Loading preview...</p>
+            if (previewContent) {
+                previewContent.style.display = 'none';
+            }
+
+            // Show the main content again
+            const mainContent = document.getElementById('mainContent');
+            if (mainContent) {
+                mainContent.style.display = 'block';
+            }
+
+            // Clear the preview iframe container
+            const previewIframeContainer = document.getElementById('previewIframeContainer');
+            if (previewIframeContainer) {
+                previewIframeContainer.innerHTML = `
+                    <div class="flex items-center justify-center h-full text-gray-500 bg-gray-50">
+                        <div class="text-center">
+                            <span class="material-icons text-4xl mb-2">description</span>
+                            <p>Loading preview...</p>
+                        </div>
                     </div>
-                </div>
-            `;
+                `;
+            }
+
+            // Reset preview mode flag and clear data
+            isPreviewMode = false;
+            currentPreviewData = null;
         }
 
         function printPreview() {
-            const iframe = document.querySelector('#previewContent iframe');
+            const iframe = document.querySelector('#previewIframeContainer iframe');
             if (iframe && iframe.contentWindow) {
                 iframe.contentWindow.print();
             }
@@ -979,10 +998,22 @@ include '../includes/admin_head.php';
             formData.set('action', 'preview');
             formData.set('quotation_type', isStandalone ? 'standalone' : 'regular');
 
+            // Detect current theme for preview styling
+            const isDarkMode = document.documentElement.classList.contains('dark') ||
+                              document.body.classList.contains('dark-theme') ||
+                              window.ThemeManager?.getCurrentTheme() === 'dark';
+            formData.set('theme', isDarkMode ? 'dark' : 'light');
+
+            // Store the form data for theme switching
+            currentPreviewData = {
+                formData: formData,
+                isStandalone: isStandalone
+            };
+
             // Show loading state
-            openPreviewModal();
-            const previewContent = document.getElementById('previewContent');
-            previewContent.innerHTML = `
+            showPreview();
+            const previewIframeContainer = document.getElementById('previewIframeContainer');
+            previewIframeContainer.innerHTML = `
                 <div class="flex items-center justify-center h-full text-gray-500">
                     <div class="text-center">
                         <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2"></div>
@@ -1009,12 +1040,13 @@ include '../includes/admin_head.php';
                 // Create an iframe to display the preview
                 const iframe = document.createElement('iframe');
                 iframe.style.width = '100%';
-                iframe.style.height = '600px';
+                iframe.style.height = '100%';
                 iframe.style.border = 'none';
-                iframe.style.borderRadius = '8px';
+                iframe.style.background = 'transparent';
+                iframe.style.display = 'block';
 
-                previewContent.innerHTML = '';
-                previewContent.appendChild(iframe);
+                previewIframeContainer.innerHTML = '';
+                previewIframeContainer.appendChild(iframe);
 
                 // Write the HTML content to the iframe
                 iframe.contentDocument.open();
@@ -1023,8 +1055,8 @@ include '../includes/admin_head.php';
             })
             .catch(error => {
                 console.error('Preview error:', error);
-                previewContent.innerHTML = `
-                    <div class="flex items-center justify-center h-full text-red-500">
+                previewIframeContainer.innerHTML = `
+                    <div class="flex items-center justify-center h-full text-red-500 bg-gray-50">
                         <div class="text-center">
                             <span class="material-icons text-4xl mb-2">error</span>
                             <p>Failed to generate preview</p>
@@ -1034,6 +1066,81 @@ include '../includes/admin_head.php';
                 `;
                 Material.showSnackbar('Failed to generate preview: ' + error.message, 'error');
             });
+        }
+
+        // Function to refresh preview when theme changes
+        function refreshPreviewForTheme() {
+            if (!isPreviewMode || !currentPreviewData) {
+                return;
+            }
+
+            // Update theme in stored form data
+            const isDarkMode = document.documentElement.classList.contains('dark') ||
+                              document.body.classList.contains('dark-theme') ||
+                              window.ThemeManager?.getCurrentTheme() === 'dark';
+
+            // Create new FormData with updated theme
+            const updatedFormData = new FormData();
+            for (let [key, value] of currentPreviewData.formData.entries()) {
+                if (key !== 'theme') {
+                    updatedFormData.set(key, value);
+                }
+            }
+            updatedFormData.set('theme', isDarkMode ? 'dark' : 'light');
+
+            // Show loading state
+            const previewIframeContainer = document.getElementById('previewIframeContainer');
+            if (previewIframeContainer) {
+                previewIframeContainer.innerHTML = `
+                    <div class="flex items-center justify-center h-full text-gray-500 bg-gray-50">
+                        <div class="text-center">
+                            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2"></div>
+                            <p>Updating theme...</p>
+                        </div>
+                    </div>
+                `;
+
+                // Make the preview request with updated theme
+                fetch('../api/quotation_creator.php', {
+                    method: 'POST',
+                    body: updatedFormData
+                })
+                .then(response => {
+                    if (response.ok) {
+                        return response.text();
+                    } else {
+                        throw new Error('Failed to refresh preview');
+                    }
+                })
+                .then(html => {
+                    // Create an iframe to display the updated preview
+                    const iframe = document.createElement('iframe');
+                    iframe.style.width = '100%';
+                    iframe.style.height = '100%';
+                    iframe.style.border = 'none';
+                    iframe.style.background = 'transparent';
+                    iframe.style.display = 'block';
+
+                    previewIframeContainer.innerHTML = '';
+                    previewIframeContainer.appendChild(iframe);
+
+                    // Write the HTML content to the iframe
+                    iframe.contentDocument.open();
+                    iframe.contentDocument.write(html);
+                    iframe.contentDocument.close();
+                })
+                .catch(error => {
+                    console.error('Preview refresh error:', error);
+                    previewIframeContainer.innerHTML = `
+                        <div class="flex items-center justify-center h-full text-red-500 bg-gray-50">
+                            <div class="text-center">
+                                <span class="material-icons text-4xl mb-2">error</span>
+                                <p>Failed to update theme</p>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
         }
 
         // Add event listeners for preview buttons
@@ -1054,11 +1161,39 @@ include '../includes/admin_head.php';
                 });
             }
 
-            // Close modal on escape key
+            // Close preview on escape key
             document.addEventListener('keydown', function(e) {
-                if (e.key === 'Escape' && document.getElementById('previewModal').style.display !== 'none') {
-                    closePreviewModal();
+                if (e.key === 'Escape' && document.getElementById('previewContent').style.display === 'block') {
+                    closePreview();
                 }
+            });
+
+            // Listen for theme changes and refresh preview if in preview mode
+            if (window.ThemeManager) {
+                document.addEventListener('themeChanged', function(e) {
+                    refreshPreviewForTheme();
+                });
+            }
+
+            // Also listen for manual theme class changes (fallback)
+            const observer = new MutationObserver(function(mutations) {
+                mutations.forEach(function(mutation) {
+                    if (mutation.type === 'attributes' &&
+                        (mutation.attributeName === 'class' || mutation.attributeName === 'data-theme')) {
+                        // Small delay to ensure theme change is complete
+                        setTimeout(refreshPreviewForTheme, 100);
+                    }
+                });
+            });
+
+            // Observe changes to document element and body
+            observer.observe(document.documentElement, {
+                attributes: true,
+                attributeFilter: ['class', 'data-theme']
+            });
+            observer.observe(document.body, {
+                attributes: true,
+                attributeFilter: ['class', 'data-theme']
             });
         });
     </script>

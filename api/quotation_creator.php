@@ -608,8 +608,11 @@ function previewQuotation() {
             }
         }
 
+        // Get theme preference
+        $theme = sanitize($_POST['theme'] ?? 'light');
+
         // Generate HTML preview using the same template as the PDF
-        $html = generatePreviewHTML($quotationData, $items);
+        $html = generatePreviewHTML($quotationData, $items, $theme);
 
         // Set headers for HTML preview
         header('Content-Type: text/html; charset=UTF-8');
@@ -621,7 +624,7 @@ function previewQuotation() {
     }
 }
 
-function generatePreviewHTML($quotation, $items) {
+function generatePreviewHTML($quotation, $items, $theme = 'light') {
     ob_start();
     ?>
 <!DOCTYPE html>
@@ -634,17 +637,17 @@ function generatePreviewHTML($quotation, $items) {
             font-family: Arial, sans-serif;
             margin: 0;
             padding: 20px;
-            color: #333;
+            color: <?php echo $theme === 'dark' ? '#e5e7eb' : '#333'; ?>;
             line-height: 1.6;
-            background-color: #f9fafb;
+            background-color: <?php echo $theme === 'dark' ? '#1f2937' : '#f9fafb'; ?>;
         }
         .preview-container {
             max-width: 800px;
             margin: 0 auto;
-            background: white;
+            background: <?php echo $theme === 'dark' ? '#374151' : 'white'; ?>;
             padding: 30px;
             border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, <?php echo $theme === 'dark' ? '0.3' : '0.1'; ?>);
         }
         .letterhead {
             text-align: center;
@@ -660,12 +663,12 @@ function generatePreviewHTML($quotation, $items) {
         }
         .company-tagline {
             font-size: 14px;
-            color: #6b7280;
+            color: <?php echo $theme === 'dark' ? '#e5e7eb' : '#6b7280'; ?>;
             margin: 5px 0;
         }
         .company-contact {
             font-size: 12px;
-            color: #4b5563;
+            color: <?php echo $theme === 'dark' ? '#e5e7eb' : '#4b5563'; ?>;
             margin: 10px 0;
         }
         .quotation-header {
@@ -693,7 +696,7 @@ function generatePreviewHTML($quotation, $items) {
             width: 120px;
         }
         .service-description {
-            background-color: #f9fafb;
+            background-color: <?php echo $theme === 'dark' ? '#4b5563' : '#f9fafb'; ?>;
             padding: 15px;
             border-left: 4px solid #2563eb;
             margin: 20px 0;
@@ -704,20 +707,20 @@ function generatePreviewHTML($quotation, $items) {
             margin: 20px 0;
         }
         .items-table th, .items-table td {
-            border: 1px solid #d1d5db;
+            border: 1px solid <?php echo $theme === 'dark' ? '#6b7280' : '#d1d5db'; ?>;
             padding: 12px;
             text-align: left;
         }
         .items-table th {
-            background-color: #f3f4f6;
+            background-color: <?php echo $theme === 'dark' ? '#6b7280' : '#f3f4f6'; ?>;
             font-weight: bold;
-            color: #374151;
+            color: <?php echo $theme === 'dark' ? '#f3f4f6' : '#374151'; ?>;
         }
         .items-table .text-right {
             text-align: right;
         }
         .base-service-row {
-            background-color: #eff6ff;
+            background-color: <?php echo $theme === 'dark' ? '#1e40af' : '#eff6ff'; ?>;
         }
         .totals-section {
             width: 300px;
@@ -730,11 +733,11 @@ function generatePreviewHTML($quotation, $items) {
         }
         .totals-table td {
             padding: 8px 12px;
-            border: 1px solid #d1d5db;
+            border: 1px solid <?php echo $theme === 'dark' ? '#6b7280' : '#d1d5db'; ?>;
         }
         .totals-table .total-label {
             font-weight: bold;
-            background-color: #f9fafb;
+            background-color: <?php echo $theme === 'dark' ? '#4b5563' : '#f9fafb'; ?>;
         }
         .totals-table .grand-total {
             background-color: #2563eb;
@@ -745,7 +748,7 @@ function generatePreviewHTML($quotation, $items) {
         .terms-section {
             margin-top: 40px;
             padding-top: 20px;
-            border-top: 1px solid #e5e7eb;
+            border-top: 1px solid <?php echo $theme === 'dark' ? '#6b7280' : '#e5e7eb'; ?>;
         }
         .terms-title {
             font-weight: bold;
@@ -753,21 +756,21 @@ function generatePreviewHTML($quotation, $items) {
         }
         .terms-list {
             font-size: 12px;
-            color: #6b7280;
+            color: <?php echo $theme === 'dark' ? '#e5e7eb' : '#6b7280'; ?>;
             line-height: 1.8;
         }
         .footer {
             margin-top: 40px;
             text-align: center;
             font-size: 12px;
-            color: #6b7280;
-            border-top: 1px solid #e5e7eb;
+            color: <?php echo $theme === 'dark' ? '#e5e7eb' : '#6b7280'; ?>;
+            border-top: 1px solid <?php echo $theme === 'dark' ? '#6b7280' : '#e5e7eb'; ?>;
             padding-top: 20px;
         }
         .preview-banner {
-            background-color: #fef3c7;
-            border: 1px solid #f59e0b;
-            color: #92400e;
+            background-color: <?php echo $theme === 'dark' ? '#92400e' : '#fef3c7'; ?>;
+            border: 1px solid <?php echo $theme === 'dark' ? '#d97706' : '#f59e0b'; ?>;
+            color: <?php echo $theme === 'dark' ? '#fef3c7' : '#92400e'; ?>;
             padding: 10px;
             text-align: center;
             font-weight: bold;
@@ -780,16 +783,33 @@ function generatePreviewHTML($quotation, $items) {
                 box-shadow: none;
                 padding: 15px;
                 max-width: none;
-                background: white;
+                background: white !important;
             }
-            body { padding: 0; background: white; }
+            body {
+                padding: 0;
+                background: white !important;
+                color: #333 !important;
+            }
+            .items-table th {
+                background-color: #f3f4f6 !important;
+                color: #374151 !important;
+            }
+            .service-description {
+                background-color: #f9fafb !important;
+            }
+            .totals-table .total-label {
+                background-color: #f9fafb !important;
+            }
+            .base-service-row {
+                background-color: #eff6ff !important;
+            }
         }
     </style>
 </head>
 <body>
     <div class="preview-container">
         <div class="preview-banner">
-            QUOTATION PREVIEW - This is a preview only. No data has been saved.
+            QUOTATION PREVIEW - This has not been sent for approval.
         </div>
 
         <!-- Letterhead -->
