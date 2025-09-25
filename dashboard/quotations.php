@@ -186,7 +186,7 @@ include '../includes/admin_head.php';
                     <!-- Main Content -->
                     <div class="p-6">
                         <!-- Quotation Statistics -->
-                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
                             <div class="bg-white rounded-lg p-4 border border-blue-100 shadow-sm">
                                 <div class="flex items-center gap-3">
                                     <div class="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
@@ -205,7 +205,7 @@ include '../includes/admin_head.php';
                                         <span class="material-icons text-yellow-600 text-lg">pending_actions</span>
                                     </div>
                                     <div>
-                                        <p class="text-yellow-600 text-xs font-medium uppercase tracking-wide">Pending to be sent</p>
+                                        <p class="text-yellow-600 text-xs font-medium uppercase tracking-wide">Pending</p>
                                         <p class="text-yellow-900 text-xl font-bold"><?php echo $pendingToBeSent; ?></p>
                                     </div>
                                 </div>
@@ -217,7 +217,7 @@ include '../includes/admin_head.php';
                                         <span class="material-icons text-orange-600 text-lg">send</span>
                                     </div>
                                     <div>
-                                        <p class="text-orange-600 text-xs font-medium uppercase tracking-wide">Sent for approval</p>
+                                        <p class="text-orange-600 text-xs font-medium uppercase tracking-wide">Sent</p>
                                         <p class="text-orange-900 text-xl font-bold"><?php echo $sentForApproval; ?></p>
                                     </div>
                                 </div>
@@ -253,13 +253,11 @@ include '../includes/admin_head.php';
                         <div class="bg-white rounded-lg border border-blue-100 shadow-sm mb-6">
                             <div class="p-4 border-b border-blue-100">
                                 <div class="flex justify-between items-center">
-                                    <h2 class="text-blue-900 text-lg font-semibold">Quotation Management</h2>
-                                    <?php if (!empty($pendingRequests)): ?>
-                                        <button type="button" onclick="document.getElementById('createQuotationModal').style.display='block'" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2">
-                                            <span class="material-icons text-sm">receipt_long</span>
-                                            Create Quotation
-                                        </button>
-                                    <?php endif; ?>
+                                    <h2 class="text-blue-900 text-lg font-semibold">Filters</h2>
+                                    <button type="button" onclick="document.getElementById('createQuotationModal').style.display='block'" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2">
+                                        <span class="material-icons text-sm">add</span>
+                                        Quick Quotation
+                                    </button>
                                 </div>
                             </div>
 
@@ -270,8 +268,8 @@ include '../includes/admin_head.php';
                                         <label for="status" class="block text-sm font-medium text-blue-900 mb-2">Status</label>
                                         <select id="status" name="status" class="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                                             <option value="">All Status</option>
-                                            <option value="pending_to_be_sent" <?php echo $status_filter === 'pending_to_be_sent' ? 'selected' : ''; ?>>Pending to be sent</option>
-                                            <option value="sent_for_approval" <?php echo $status_filter === 'sent_for_approval' ? 'selected' : ''; ?>>Sent for approval</option>
+                                            <option value="pending_to_be_sent" <?php echo $status_filter === 'pending_to_be_sent' ? 'selected' : ''; ?>>Pending</option>
+                                            <option value="sent_for_approval" <?php echo $status_filter === 'sent_for_approval' ? 'selected' : ''; ?>>Sent</option>
                                             <option value="approved" <?php echo $status_filter === 'approved' ? 'selected' : ''; ?>>Approved</option>
                                             <option value="rejected" <?php echo $status_filter === 'rejected' ? 'selected' : ''; ?>>Rejected</option>
                                         </select>
@@ -378,10 +376,10 @@ include '../includes/admin_head.php';
                                                         $statusClass = '';
 
                                                         if (!$status) {
-                                                            $statusDisplay = 'Pending to be sent';
+                                                            $statusDisplay = 'Pending';
                                                             $statusClass = 'bg-yellow-100 text-yellow-800';
                                                         } elseif ($status === 'pending') {
-                                                            $statusDisplay = 'Sent for approval';
+                                                            $statusDisplay = 'Sent';
                                                             $statusClass = 'bg-orange-100 text-orange-800';
                                                         } elseif ($status === 'approved') {
                                                             $statusDisplay = 'Approved';

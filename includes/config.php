@@ -32,7 +32,7 @@ define('SITE_URL', getBaseUrl());
 define('SMTP_HOST', 'smtp.hostinger.com');
 define('SMTP_PORT', 587);
 define('SMTP_USERNAME', 'admin@om-engineers.org');
-define('Amit@31122001', ''); // Set your email password here
+define('SMTP_PASSWORD', 'Amit@31122001'); // Set your email password here
 define('FROM_EMAIL', 'admin@om-engineers.org');
 define('FROM_NAME', 'Om Engineers');
 

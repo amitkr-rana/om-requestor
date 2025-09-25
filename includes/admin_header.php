@@ -85,13 +85,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const currentOrgId = <?php echo json_encode($currentOrgId); ?>;
 
             if (selectedOrgId != currentOrgId) {
-                if (confirm('Switch to this organization? This will refresh the page and update all data views.')) {
-                    // Send AJAX request to switch organization
-                    switchOrganization(selectedOrgId);
-                } else {
-                    // Reset to current organization if user cancels
-                    this.value = currentOrgId;
-                }
+                // Send AJAX request to switch organization
+                switchOrganization(selectedOrgId);
             }
         });
     }
