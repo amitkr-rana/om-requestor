@@ -248,25 +248,22 @@ include '../includes/admin_head.php';
                                     <input type="hidden" name="problem_description" id="hiddenProblemDescription">
 
                                     <div class="p-6 space-y-6">
-                                        <!-- Base Service Charge -->
-                                        <div>
-                                            <h4 class="text-blue-900 font-semibold mb-3">Base Service Charge</h4>
-                                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <div class="input-field">
-                                                    <input type="number" id="baseServiceCharge" name="base_service_charge" step="0.01" min="0" required>
-                                                    <label for="baseServiceCharge">Service Charge (₹)</label>
-                                                </div>
-                                                <div class="input-field">
-                                                    <textarea id="workDescription" name="work_description" rows="3" required></textarea>
-                                                    <label for="workDescription">Work Description</label>
-                                                </div>
-                                            </div>
-                                        </div>
-
                                         <!-- Parts and Miscellaneous Items -->
                                         <div>
+                                            <h4 class="text-blue-900 font-semibold mb-3">Base Service Charge</h4>
+                                            
+                                            <!-- Base Service Charge Row -->
+                                            <div class="border border-blue-200 rounded-lg p-4 mb-4 bg-blue-50">
+                                                <div class="grid grid-cols-1 gap-4">
+                                                    <div class="input-field">
+                                                        <input type="number" id="baseServiceCharge" name="base_service_charge" step="0.01" min="0" required>
+                                                        <label for="baseServiceCharge"></label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
                                             <div class="flex justify-between items-center mb-3">
-                                                <h4 class="text-blue-900 font-semibold">Parts & Miscellaneous Items</h4>
+                                                <h4 class="text-blue-900 font-semibold">Price Breakup</h4>
                                                 <button type="button" id="addItemBtnStandalone" class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">
                                                     <span class="material-icons text-sm">add</span> Add Item
                                                 </button>
@@ -353,8 +350,7 @@ include '../includes/admin_head.php';
                             <!-- Quotation Creation Form -->
                             <div class="bg-white rounded-lg border border-blue-100 shadow-sm mb-6">
                                 <div class="p-4 border-b border-blue-100">
-                                    <div class="flex justify-between items-center">
-                                        <h2 class="text-blue-900 text-lg font-semibold">Create Quotation</h2>
+                                    <div class="flex justify-between items-center">&nbsp;</h2>
                                         <a href="quotation_creator.php" class="text-blue-600 hover:text-blue-800 text-sm">← Back to Requests</a>
                                     </div>
                                 </div>
@@ -386,25 +382,22 @@ include '../includes/admin_head.php';
                                     <?php echo csrfField(); ?>
 
                                     <div class="p-6 space-y-6">
-                                        <!-- Base Service Charge -->
-                                        <div>
-                                            <h4 class="text-blue-900 font-semibold mb-3">Base Service Charge</h4>
-                                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <div class="input-field">
-                                                    <input type="number" id="baseServiceCharge" name="base_service_charge" step="0.01" min="0" required>
-                                                    <label for="baseServiceCharge">Service Charge (₹)</label>
-                                                </div>
-                                                <div class="input-field">
-                                                    <textarea id="workDescription" name="work_description" rows="3" required></textarea>
-                                                    <label for="workDescription">Work Description</label>
-                                                </div>
-                                            </div>
-                                        </div>
-
                                         <!-- Parts and Miscellaneous Items -->
                                         <div>
+                                            <h4 class="text-blue-900 font-semibold mb-3">Base Service Charge</h4>
+                                            
+                                            <!-- Base Service Charge Row -->
+                                            <div class="border border-blue-200 rounded-lg p-4 mb-4 bg-blue-50">
+                                                <div class="grid grid-cols-1 gap-4">
+                                                    <div class="input-field">
+                                                        <input type="number" id="baseServiceCharge" name="base_service_charge" step="0.01" min="0" required>
+                                                        <label for="baseServiceCharge"></label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
                                             <div class="flex justify-between items-center mb-3">
-                                                <h4 class="text-blue-900 font-semibold">Parts & Miscellaneous Items</h4>
+                                                <h4 class="text-blue-900 font-semibold">Price Breakup</h4>
                                                 <button type="button" id="addItemBtn" class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">
                                                     <span class="material-icons text-sm">add</span> Add Item
                                                 </button>
@@ -480,7 +473,7 @@ include '../includes/admin_head.php';
                                                 Preview Quotation
                                             </button>
                                             <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">
-                                                Create Quotation
+                                                Send Quotation for Approval
                                             </button>
                                         </div>
                                     </div>
@@ -951,11 +944,6 @@ include '../includes/admin_head.php';
                 errors.push('Base service charge is required and must be greater than zero');
             }
 
-            // Check work description
-            const workDesc = document.getElementById('workDescription');
-            if (!workDesc || !workDesc.value.trim()) {
-                errors.push('Work description is required');
-            }
 
             // For standalone quotations, check additional fields
             if (isStandalone) {

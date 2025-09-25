@@ -250,10 +250,6 @@ class QuotationPDF {
     <div class="service-description">
         <div class="section-title">Service Required</div>
         <p><?php echo htmlspecialchars($quotation['problem_description']); ?></p>
-        <div style="margin-top: 15px;">
-            <strong>Proposed Solution:</strong><br>
-            <?php echo nl2br(htmlspecialchars($quotation['work_description'])); ?>
-        </div>
     </div>
 
     <!-- Items Table -->
@@ -316,13 +312,9 @@ class QuotationPDF {
     <div class="terms-section">
         <div class="terms-title">Terms & Conditions:</div>
         <div class="terms-list">
-            1. This quotation is valid for 30 days from the date of issue.<br>
-            2. All prices are inclusive of mentioned taxes.<br>
-            3. Payment terms: 50% advance, 50% on completion of work.<br>
-            4. Any additional work required will be charged separately.<br>
-            5. We provide 30 days warranty on our service work.<br>
-            6. Customer is responsible for removing personal belongings from the vehicle.<br>
-            7. Om Engineers is not responsible for any damage to aftermarket accessories.
+            1. This quotation is valid for a week from the date of issue.<br>
+            2. Payment terms: 50% advance, 50% on completion of work.<br>
+            3. Any additional work required will be charged separately.<br>
         </div>
     </div>
 

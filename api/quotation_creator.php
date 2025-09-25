@@ -48,7 +48,6 @@ function createDetailedQuotation() {
 
     $request_id = (int)($_POST['request_id'] ?? 0);
     $base_service_charge = (float)($_POST['base_service_charge'] ?? 0);
-    $work_description = sanitize($_POST['work_description'] ?? '');
     $subtotal = (float)($_POST['subtotal'] ?? 0);
     $sgst_rate = (float)($_POST['sgst_rate'] ?? 9.00);
     $cgst_rate = (float)($_POST['cgst_rate'] ?? 9.00);
@@ -72,12 +71,6 @@ function createDetailedQuotation() {
         return;
     }
 
-    if (empty($work_description)) {
-        ob_clean();
-        http_response_code(400);
-        echo json_encode(['error' => 'Work description is required']);
-        return;
-    }
 
     // Check if service request exists and is pending
     try {
@@ -147,14 +140,13 @@ function createDetailedQuotation() {
             // Create quotation with new schema
             $result = $db->query(
                 "INSERT INTO quotations
-                 (quotation_number, request_id, amount, work_description, base_service_charge,
+                 (quotation_number, request_id, amount, base_service_charge,
                   subtotal, sgst_rate, cgst_rate, sgst_amount, cgst_amount, total_amount, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sent')",
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sent')",
                 [
                     $quotation_number,
                     $request_id,
                     $total_amount, // Keep for backward compatibility
-                    $work_description,
                     $base_service_charge,
                     $subtotal,
                     $sgst_rate,
@@ -167,9 +159,9 @@ function createDetailedQuotation() {
         } else {
             // Fall back to basic quotation creation (old schema)
             $result = $db->query(
-                "INSERT INTO quotations (request_id, amount, work_description, status)
-                 VALUES (?, ?, ?, 'sent')",
-                [$request_id, $total_amount, $work_description]
+                "INSERT INTO quotations (request_id, amount, status)
+                 VALUES (?, ?, 'sent')",
+                [$request_id, $total_amount]
             );
         }
 
@@ -255,7 +247,6 @@ function createStandaloneQuotation() {
     $customer_email = sanitize($_POST['customer_email'] ?? '');
     $problem_description = sanitize($_POST['problem_description'] ?? '');
     $base_service_charge = (float)($_POST['base_service_charge'] ?? 0);
-    $work_description = sanitize($_POST['work_description'] ?? '');
     $subtotal = (float)($_POST['subtotal'] ?? 0);
     $sgst_rate = (float)($_POST['sgst_rate'] ?? 9.00);
     $cgst_rate = (float)($_POST['cgst_rate'] ?? 9.00);
@@ -300,12 +291,6 @@ function createStandaloneQuotation() {
         return;
     }
 
-    if (empty($work_description)) {
-        ob_clean();
-        http_response_code(400);
-        echo json_encode(['error' => 'Work description is required']);
-        return;
-    }
 
     try {
         // Start transaction
@@ -344,14 +329,13 @@ function createStandaloneQuotation() {
                 // Create quotation with enhanced schema
                 $result = $db->query(
                     "INSERT INTO quotations
-                     (quotation_number, request_id, is_standalone, standalone_customer_id, amount, work_description, base_service_charge,
+                     (quotation_number, request_id, is_standalone, standalone_customer_id, amount, base_service_charge,
                       subtotal, sgst_rate, cgst_rate, sgst_amount, cgst_amount, total_amount, status)
-                     VALUES (?, 0, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sent')",
+                     VALUES (?, 0, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sent')",
                     [
                         $quotation_number,
                         $standalone_customer_id,
                         $total_amount,
-                        $work_description,
                         $base_service_charge,
                         $subtotal,
                         $sgst_rate,
@@ -364,9 +348,9 @@ function createStandaloneQuotation() {
             } else {
                 // Fallback to basic quotation creation
                 $result = $db->query(
-                    "INSERT INTO quotations (request_id, is_standalone, standalone_customer_id, amount, work_description, status)
-                     VALUES (0, 1, ?, ?, ?, 'sent')",
-                    [$standalone_customer_id, $total_amount, $work_description]
+                    "INSERT INTO quotations (request_id, is_standalone, standalone_customer_id, amount, status)
+                     VALUES (0, 1, ?, ?, 'sent')",
+                    [$standalone_customer_id, $total_amount]
                 );
             }
         } else {
@@ -515,7 +499,6 @@ function previewQuotation() {
                 'requestor_email' => sanitize($_POST['customer_email'] ?? ''),
                 'registration_number' => sanitize($_POST['vehicle_registration'] ?? ''),
                 'problem_description' => sanitize($_POST['problem_description'] ?? ''),
-                'work_description' => sanitize($_POST['work_description'] ?? ''),
                 'base_service_charge' => (float)($_POST['base_service_charge'] ?? 0),
                 'subtotal' => (float)($_POST['subtotal'] ?? 0),
                 'sgst_rate' => (float)($_POST['sgst_rate'] ?? 9.00),
@@ -563,7 +546,6 @@ function previewQuotation() {
                 'requestor_email' => $serviceRequest['requestor_email'],
                 'registration_number' => $serviceRequest['registration_number'],
                 'problem_description' => $serviceRequest['problem_description'],
-                'work_description' => sanitize($_POST['work_description'] ?? ''),
                 'base_service_charge' => (float)($_POST['base_service_charge'] ?? 0),
                 'subtotal' => (float)($_POST['subtotal'] ?? 0),
                 'sgst_rate' => (float)($_POST['sgst_rate'] ?? 9.00),
@@ -575,11 +557,6 @@ function previewQuotation() {
         }
 
         // Validate required fields
-        if (empty($quotationData['work_description'])) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Work description is required']);
-            return;
-        }
 
         if ($quotationData['base_service_charge'] <= 0) {
             http_response_code(400);
@@ -860,10 +837,6 @@ function generatePreviewHTML($quotation, $items, $theme = 'light') {
         <div class="service-description">
             <div class="section-title">Service Required</div>
             <p><?php echo htmlspecialchars($quotation['problem_description']); ?></p>
-            <div style="margin-top: 15px;">
-                <strong>Proposed Solution:</strong><br>
-                <?php echo nl2br(htmlspecialchars($quotation['work_description'])); ?>
-            </div>
         </div>
 
         <!-- Items Table -->
@@ -926,13 +899,9 @@ function generatePreviewHTML($quotation, $items, $theme = 'light') {
         <div class="terms-section">
             <div class="terms-title">Terms & Conditions:</div>
             <div class="terms-list">
-                1. This quotation is valid for 30 days from the date of issue.<br>
-                2. All prices are inclusive of mentioned taxes.<br>
-                3. Payment terms: 50% advance, 50% on completion of work.<br>
-                4. Any additional work required will be charged separately.<br>
-                5. We provide 30 days warranty on our service work.<br>
-                6. Customer is responsible for removing personal belongings from the vehicle.<br>
-                7. Om Engineers is not responsible for any damage to aftermarket accessories.
+                1. This quotation is valid for a week from the date of issue.<br>
+                2. Payment terms: 50% advance, 50% on completion of work.<br>
+                3. Any additional work required will be charged separately.<br>
             </div>
         </div>
 
