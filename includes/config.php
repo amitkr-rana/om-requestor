@@ -3,7 +3,7 @@
 
 // Database configuration
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'om_requestor');
+define('DB_NAME', 'u391156245_om_engineers');
 define('DB_USER', 'root');
 define('DB_PASS', '');
 
