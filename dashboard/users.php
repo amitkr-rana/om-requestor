@@ -3,6 +3,9 @@ require_once '../includes/functions.php';
 
 requireRole('admin');
 
+// Check if new system is available
+$useNewTables = useNewDatabase();
+
 // Handle pagination
 $page = (int)($_GET['page'] ?? 1);
 $limit = ITEMS_PER_PAGE;
@@ -18,7 +21,7 @@ $conditions = [];
 $params = [];
 
 // Organization filtering based on current admin context
-if ($_SESSION['organization_id'] != 2) { // If not Om Engineers system admin viewing from another org context
+if ($_SESSION['organization_id'] != 15) { // If not Om Engineers system admin viewing from another org context
     $conditions[] = "u.organization_id = ?";
     $params[] = $_SESSION['organization_id'];
 }
@@ -43,22 +46,41 @@ if ($search) {
 $whereClause = !empty($conditions) ? 'WHERE ' . implode(' AND ', $conditions) : '';
 
 // Get total count
-$totalResult = $db->fetch(
-    "SELECT COUNT(*) as count FROM users u {$whereClause}",
-    $params
-);
+if ($useNewTables) {
+    $totalResult = $db->fetch(
+        "SELECT COUNT(*) as count FROM users_new u {$whereClause}",
+        $params
+    );
+} else {
+    $totalResult = $db->fetch(
+        "SELECT COUNT(*) as count FROM users u {$whereClause}",
+        $params
+    );
+}
 $totalUsers = $totalResult ? $totalResult['count'] : 0;
 
 // Get users with pagination
-$usersResult = $db->fetchAll(
-    "SELECT u.*, o.name as organization_name
-     FROM users u
-     JOIN organizations o ON u.organization_id = o.id
-     {$whereClause}
-     ORDER BY u.created_at DESC
-     LIMIT {$limit} OFFSET {$offset}",
-    $params
-);
+if ($useNewTables) {
+    $usersResult = $db->fetchAll(
+        "SELECT u.*, o.name as organization_name
+         FROM users_new u
+         JOIN organizations_new o ON u.organization_id = o.id
+         {$whereClause}
+         ORDER BY u.created_at DESC
+         LIMIT {$limit} OFFSET {$offset}",
+        $params
+    );
+} else {
+    $usersResult = $db->fetchAll(
+        "SELECT u.*, o.name as organization_name
+         FROM users u
+         JOIN organizations o ON u.organization_id = o.id
+         {$whereClause}
+         ORDER BY u.created_at DESC
+         LIMIT {$limit} OFFSET {$offset}",
+        $params
+    );
+}
 $users = $usersResult ?: [];
 
 $pagination = paginate($page, $totalUsers, $limit);
@@ -68,7 +90,7 @@ $statsConditions = [];
 $statsParams = [];
 
 // Organization filtering based on current admin context (same as main query)
-if ($_SESSION['organization_id'] != 2) { // If not Om Engineers system admin viewing from another org context
+if ($_SESSION['organization_id'] != 15) { // If not Om Engineers system admin viewing from another org context
     $statsConditions[] = "u.organization_id = ?";
     $statsParams[] = $_SESSION['organization_id'];
 }
@@ -81,40 +103,67 @@ $inactiveWhere = $statsWhereClause ? $statsWhereClause . " AND u.is_active = 0" 
 $requestorWhere = $statsWhereClause ? $statsWhereClause . " AND u.role = 'requestor'" : "WHERE u.role = 'requestor'";
 $approverWhere = $statsWhereClause ? $statsWhereClause . " AND u.role = 'approver'" : "WHERE u.role = 'approver'";
 
-$activeUsersResult = $db->fetch(
-    "SELECT COUNT(*) as count FROM users u {$activeWhere}",
-    $statsParams
-);
+if ($useNewTables) {
+    $activeUsersResult = $db->fetch(
+        "SELECT COUNT(*) as count FROM users_new u {$activeWhere}",
+        $statsParams
+    );
+    $inactiveUsersResult = $db->fetch(
+        "SELECT COUNT(*) as count FROM users_new u {$inactiveWhere}",
+        $statsParams
+    );
+    $requestorsResult = $db->fetch(
+        "SELECT COUNT(*) as count FROM users_new u {$requestorWhere}",
+        $statsParams
+    );
+    $approversResult = $db->fetch(
+        "SELECT COUNT(*) as count FROM users_new u {$approverWhere}",
+        $statsParams
+    );
+} else {
+    $activeUsersResult = $db->fetch(
+        "SELECT COUNT(*) as count FROM users u {$activeWhere}",
+        $statsParams
+    );
+    $inactiveUsersResult = $db->fetch(
+        "SELECT COUNT(*) as count FROM users u {$inactiveWhere}",
+        $statsParams
+    );
+    $requestorsResult = $db->fetch(
+        "SELECT COUNT(*) as count FROM users u {$requestorWhere}",
+        $statsParams
+    );
+    $approversResult = $db->fetch(
+        "SELECT COUNT(*) as count FROM users u {$approverWhere}",
+        $statsParams
+    );
+}
+
 $activeUsers = $activeUsersResult ? $activeUsersResult['count'] : 0;
-
-$inactiveUsersResult = $db->fetch(
-    "SELECT COUNT(*) as count FROM users u {$inactiveWhere}",
-    $statsParams
-);
 $inactiveUsers = $inactiveUsersResult ? $inactiveUsersResult['count'] : 0;
-
-$requestorsResult = $db->fetch(
-    "SELECT COUNT(*) as count FROM users u {$requestorWhere}",
-    $statsParams
-);
 $requestorsCount = $requestorsResult ? $requestorsResult['count'] : 0;
-
-$approversResult = $db->fetch(
-    "SELECT COUNT(*) as count FROM users u {$approverWhere}",
-    $statsParams
-);
 $approversCount = $approversResult ? $approversResult['count'] : 0;
 
 // Get organizations for dropdown (only if Om Engineers admin)
 $organizationsForDropdown = [];
 if (isset($_SESSION['is_om_engineers_admin']) && $_SESSION['is_om_engineers_admin']) {
-    $organizationsForDropdown = $db->fetchAll("SELECT id, name FROM organizations WHERE id != 2 ORDER BY name");
+    if ($useNewTables) {
+        $organizationsForDropdown = $db->fetchAll("SELECT id, name FROM organizations_new WHERE id != 15 ORDER BY name");
+    } else {
+        $organizationsForDropdown = $db->fetchAll("SELECT id, name FROM organizations WHERE id != 15 ORDER BY name");
+    }
 }
 
 $pageTitle = 'User Management';
 include '../includes/admin_head.php';
 ?>
-<?php include '../includes/admin_sidebar.php'; ?>
+<?php
+if ($useNewTables) {
+    include '../includes/admin_sidebar_new.php';
+} else {
+    include '../includes/admin_sidebar.php';
+}
+?>
                 <div class="layout-content-container flex flex-col flex-1 overflow-y-auto">
                     <?php include '../includes/admin_header.php'; ?>
 

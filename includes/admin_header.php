@@ -1,29 +1,40 @@
 <?php
-// Admin header component
+// Admin header component - Enhanced for new quotation-centric system
 // Expects $pageTitle to be set before including this file
+
+// Check if new system is available
+$useNewTables = useNewDatabase();
 
 // Get all organizations for dropdown (only for admins, exclude Om Engineers)
 $allOrganizations = [];
 if ($_SESSION['role'] === 'admin') {
-    $allOrganizations = $db->fetchAll("SELECT id, name FROM organizations WHERE id != 2 ORDER BY name");
+    if ($useNewTables) {
+        $allOrganizations = $db->fetchAll("SELECT id, name FROM organizations_new WHERE id != 15 ORDER BY name");
+    } else {
+        $allOrganizations = $db->fetchAll("SELECT id, name FROM organizations WHERE id != 15 ORDER BY name");
+    }
 }
 
 // Get current organization info - ensure Om Engineers admin defaults to first client org
 $currentOrgId = $_SESSION['organization_id'] ?? 0;
 
 // If current user is Om Engineers admin but no org selected, default to first available client org
-if ($currentOrgId == 2 && count($allOrganizations) > 0) {
+if ($currentOrgId == 15 && count($allOrganizations) > 0) {
     $currentOrgId = $allOrganizations[0]['id'];
     $_SESSION['organization_id'] = $currentOrgId;
     $_SESSION['organization_name'] = $allOrganizations[0]['name'];
 }
 
 // Get current organization name
-if ($currentOrgId == 2) {
+if ($currentOrgId == 15) {
     // This should not happen anymore, but keep as fallback
     $currentOrgName = 'Om Engineers (System Admin)';
 } else {
-    $currentOrg = $db->fetch("SELECT name FROM organizations WHERE id = ?", [$currentOrgId]);
+    if ($useNewTables) {
+        $currentOrg = $db->fetch("SELECT name FROM organizations_new WHERE id = ?", [$currentOrgId]);
+    } else {
+        $currentOrg = $db->fetch("SELECT name FROM organizations WHERE id = ?", [$currentOrgId]);
+    }
     $currentOrgName = $currentOrg['name'] ?? 'Organization';
 }
 ?>

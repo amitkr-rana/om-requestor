@@ -5,6 +5,9 @@ requireRole('admin');
 
 header('Content-Type: application/json');
 
+// Check if new system is available
+$GLOBALS['useNewTables'] = useNewDatabase();
+
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $action = $_GET['action'] ?? '';
     if ($action === 'get') {
@@ -38,7 +41,7 @@ switch ($action) {
 }
 
 function getUser() {
-    global $db;
+    global $db, $useNewTables;
 
     $user_id = (int)($_GET['id'] ?? 0);
 
@@ -48,10 +51,17 @@ function getUser() {
         return;
     }
 
-    $user = $db->fetch(
-        "SELECT id, username, email, full_name, role, organization_id, is_active, created_at FROM users WHERE id = ?",
-        [$user_id]
-    );
+    if ($useNewTables) {
+        $user = $db->fetch(
+            "SELECT id, username, email, full_name, role, organization_id, is_active, created_at FROM users_new WHERE id = ?",
+            [$user_id]
+        );
+    } else {
+        $user = $db->fetch(
+            "SELECT id, username, email, full_name, role, organization_id, is_active, created_at FROM users WHERE id = ?",
+            [$user_id]
+        );
+    }
 
     if (!$user) {
         http_response_code(404);
@@ -66,7 +76,7 @@ function getUser() {
 }
 
 function createUser() {
-    global $db;
+    global $db, $useNewTables;
 
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         http_response_code(400);
@@ -108,7 +118,7 @@ function createUser() {
         return;
     }
 
-    // Validate organization exists (allow 2 for Om Engineers system admin org)
+    // Validate organization exists (allow 15 for Om Engineers system admin org)
     if ($organization_id < 0) {
         http_response_code(400);
         echo json_encode(['error' => 'Invalid organization selected']);
@@ -116,7 +126,7 @@ function createUser() {
     }
 
     // Special handling for Om Engineers (system admin organization)
-    if ($organization_id === 2) {
+    if ($organization_id === 15) {
         // Om Engineers is a special system admin organization - always valid
         // Only allow for admin role
         if ($role !== 'admin') {
@@ -126,7 +136,11 @@ function createUser() {
         }
     } else {
         // Validate regular organizations exist in database
-        $organization = $db->fetch("SELECT id FROM organizations WHERE id = ?", [$organization_id]);
+        if ($useNewTables) {
+            $organization = $db->fetch("SELECT id FROM organizations_new WHERE id = ?", [$organization_id]);
+        } else {
+            $organization = $db->fetch("SELECT id FROM organizations WHERE id = ?", [$organization_id]);
+        }
         if (!$organization) {
             http_response_code(400);
             echo json_encode(['error' => 'Selected organization does not exist']);
@@ -135,10 +149,17 @@ function createUser() {
     }
 
     // Check if username or email already exists
-    $existingUser = $db->fetch(
-        "SELECT id FROM users WHERE username = ? OR email = ?",
-        [$username, $email]
-    );
+    if ($useNewTables) {
+        $existingUser = $db->fetch(
+            "SELECT id FROM users_new WHERE username = ? OR email = ?",
+            [$username, $email]
+        );
+    } else {
+        $existingUser = $db->fetch(
+            "SELECT id FROM users WHERE username = ? OR email = ?",
+            [$username, $email]
+        );
+    }
 
     if ($existingUser) {
         http_response_code(400);
@@ -149,11 +170,19 @@ function createUser() {
     // Create user
     $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
 
-    $result = $db->query(
-        "INSERT INTO users (organization_id, username, email, password, full_name, role)
-         VALUES (?, ?, ?, ?, ?, ?)",
-        [$organization_id, $username, $email, $hashedPassword, $full_name, $role]
-    );
+    if ($useNewTables) {
+        $result = $db->query(
+            "INSERT INTO users_new (organization_id, username, email, password, full_name, role)
+             VALUES (?, ?, ?, ?, ?, ?)",
+            [$organization_id, $username, $email, $hashedPassword, $full_name, $role]
+        );
+    } else {
+        $result = $db->query(
+            "INSERT INTO users (organization_id, username, email, password, full_name, role)
+             VALUES (?, ?, ?, ?, ?, ?)",
+            [$organization_id, $username, $email, $hashedPassword, $full_name, $role]
+        );
+    }
 
     if ($result) {
         echo json_encode([
@@ -168,7 +197,7 @@ function createUser() {
 }
 
 function updateUser() {
-    global $db;
+    global $db, $useNewTables;
 
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         http_response_code(400);
@@ -211,13 +240,17 @@ function updateUser() {
 
     // Validate organization exists (if provided)
     if ($organization_id > 0) {
-        $organization = $db->fetch("SELECT id FROM organizations WHERE id = ?", [$organization_id]);
+        if ($useNewTables) {
+            $organization = $db->fetch("SELECT id FROM organizations_new WHERE id = ?", [$organization_id]);
+        } else {
+            $organization = $db->fetch("SELECT id FROM organizations WHERE id = ?", [$organization_id]);
+        }
         if (!$organization) {
             http_response_code(400);
             echo json_encode(['error' => 'Selected organization does not exist']);
             return;
         }
-    } else if ($organization_id === 2) {
+    } else if ($organization_id === 15) {
         // Special handling for Om Engineers (system admin organization)
         if ($role !== 'admin') {
             http_response_code(400);
@@ -227,10 +260,17 @@ function updateUser() {
     }
 
     // Check if username or email already exists (excluding current user)
-    $existingUser = $db->fetch(
-        "SELECT id FROM users WHERE (username = ? OR email = ?) AND id != ?",
-        [$username, $email, $user_id]
-    );
+    if ($useNewTables) {
+        $existingUser = $db->fetch(
+            "SELECT id FROM users_new WHERE (username = ? OR email = ?) AND id != ?",
+            [$username, $email, $user_id]
+        );
+    } else {
+        $existingUser = $db->fetch(
+            "SELECT id FROM users WHERE (username = ? OR email = ?) AND id != ?",
+            [$username, $email, $user_id]
+        );
+    }
 
     if ($existingUser) {
         http_response_code(400);
@@ -240,9 +280,9 @@ function updateUser() {
 
     // Update user
     $params = [$username, $email, $full_name, $role];
-    $sql = "UPDATE users SET username = ?, email = ?, full_name = ?, role = ?";
+    $sql = $useNewTables ? "UPDATE users_new SET username = ?, email = ?, full_name = ?, role = ?" : "UPDATE users SET username = ?, email = ?, full_name = ?, role = ?";
 
-    // Update organization if provided (including 2 for Om Engineers)
+    // Update organization if provided (including 15 for Om Engineers)
     if ($organization_id >= 0) {
         $sql .= ", organization_id = ?";
         $params[] = $organization_id;
@@ -277,7 +317,7 @@ function updateUser() {
 }
 
 function deleteUser() {
-    global $db;
+    global $db, $useNewTables;
 
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         http_response_code(400);
@@ -307,11 +347,19 @@ function deleteUser() {
 
     if ($hasVehicles || $hasRequests || $hasApprovals) {
         // Soft delete by setting is_active to 0
-        $result = $db->query("UPDATE users SET is_active = 0 WHERE id = ?", [$user_id]);
+        if ($useNewTables) {
+            $result = $db->query("UPDATE users_new SET is_active = 0 WHERE id = ?", [$user_id]);
+        } else {
+            $result = $db->query("UPDATE users SET is_active = 0 WHERE id = ?", [$user_id]);
+        }
         $message = 'User deactivated successfully (has associated data)';
     } else {
         // Hard delete if no associated data
-        $result = $db->query("DELETE FROM users WHERE id = ?", [$user_id]);
+        if ($useNewTables) {
+            $result = $db->query("DELETE FROM users_new WHERE id = ?", [$user_id]);
+        } else {
+            $result = $db->query("DELETE FROM users WHERE id = ?", [$user_id]);
+        }
         $message = 'User deleted successfully';
     }
 
@@ -327,7 +375,7 @@ function deleteUser() {
 }
 
 function toggleUserStatus() {
-    global $db;
+    global $db, $useNewTables;
 
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         http_response_code(400);
@@ -351,13 +399,24 @@ function toggleUserStatus() {
     }
 
     // Toggle status
-    $result = $db->query(
-        "UPDATE users SET is_active = NOT is_active WHERE id = ?",
-        [$user_id]
-    );
+    if ($useNewTables) {
+        $result = $db->query(
+            "UPDATE users_new SET is_active = NOT is_active WHERE id = ?",
+            [$user_id]
+        );
+    } else {
+        $result = $db->query(
+            "UPDATE users SET is_active = NOT is_active WHERE id = ?",
+            [$user_id]
+        );
+    }
 
     if ($result) {
-        $user = $db->fetch("SELECT is_active FROM users WHERE id = ?", [$user_id]);
+        if ($useNewTables) {
+            $user = $db->fetch("SELECT is_active FROM users_new WHERE id = ?", [$user_id]);
+        } else {
+            $user = $db->fetch("SELECT is_active FROM users WHERE id = ?", [$user_id]);
+        }
         $status = $user['is_active'] ? 'activated' : 'deactivated';
 
         echo json_encode([
