@@ -83,7 +83,7 @@ if ($_SESSION['organization_id'] == 2) {
 $pageTitle = 'Vehicle Management';
 include '../includes/admin_head.php';
 ?>
-<?php include '../includes/admin_sidebar.php'; ?>
+<?php include '../includes/admin_sidebar_new.php'; ?>
                 <div class="layout-content-container flex flex-col flex-1 overflow-y-auto">
                     <?php include '../includes/admin_header.php'; ?>
 

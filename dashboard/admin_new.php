@@ -116,7 +116,7 @@ if ($useNewTables) {
 $pageTitle = 'Dashboard';
 include '../includes/admin_head.php';
 ?>
-<?php include '../includes/admin_sidebar.php'; ?>
+<?php include '../includes/admin_sidebar_new.php'; ?>
                 <div class="layout-content-container flex flex-col flex-1 overflow-y-auto">
                     <?php include '../includes/admin_header.php'; ?>
 
