@@ -64,41 +64,50 @@ $users = $usersResult ?: [];
 
 $pagination = paginate($page, $totalUsers, $limit);
 
-// Get user statistics for dashboard cards - only use organization filtering, ignore other filters
-$statsConditions = [];
-$statsParams = [];
+// Get user statistics for dashboard cards - independent of search/filters
+// Only apply organization filtering for stats
+if ($_SESSION['organization_id'] != 15) { // If not Om Engineers system admin
+    $statsOrgParam = [$_SESSION['organization_id']];
 
-// Organization filtering based on current admin context (same as main query)
-if ($_SESSION['organization_id'] != 15) { // If not Om Engineers system admin viewing from another org context
-    $statsConditions[] = "u.organization_id = ?";
-    $statsParams[] = $_SESSION['organization_id'];
+    $totalUsersStatsResult = $db->fetch(
+        "SELECT COUNT(*) as count FROM users_new u WHERE u.organization_id = ?",
+        $statsOrgParam
+    );
+    $activeUsersResult = $db->fetch(
+        "SELECT COUNT(*) as count FROM users_new u WHERE u.organization_id = ? AND u.is_active = 1",
+        $statsOrgParam
+    );
+    $inactiveUsersResult = $db->fetch(
+        "SELECT COUNT(*) as count FROM users_new u WHERE u.organization_id = ? AND u.is_active = 0",
+        $statsOrgParam
+    );
+    $requestorsResult = $db->fetch(
+        "SELECT COUNT(*) as count FROM users_new u WHERE u.organization_id = ? AND u.role = 'requestor'",
+        $statsOrgParam
+    );
+    $approversResult = $db->fetch(
+        "SELECT COUNT(*) as count FROM users_new u WHERE u.organization_id = ? AND u.role = 'approver'",
+        $statsOrgParam
+    );
+} else { // Om Engineers system admin - see all users
+    $totalUsersStatsResult = $db->fetch(
+        "SELECT COUNT(*) as count FROM users_new u"
+    );
+    $activeUsersResult = $db->fetch(
+        "SELECT COUNT(*) as count FROM users_new u WHERE u.is_active = 1"
+    );
+    $inactiveUsersResult = $db->fetch(
+        "SELECT COUNT(*) as count FROM users_new u WHERE u.is_active = 0"
+    );
+    $requestorsResult = $db->fetch(
+        "SELECT COUNT(*) as count FROM users_new u WHERE u.role = 'requestor'"
+    );
+    $approversResult = $db->fetch(
+        "SELECT COUNT(*) as count FROM users_new u WHERE u.role = 'approver'"
+    );
 }
 
-$statsWhereClause = !empty($statsConditions) ? 'WHERE ' . implode(' AND ', $statsConditions) : '';
-
-// Build proper WHERE clauses for statistics
-$activeWhere = $statsWhereClause ? $statsWhereClause . " AND u.is_active = 1" : "WHERE u.is_active = 1";
-$inactiveWhere = $statsWhereClause ? $statsWhereClause . " AND u.is_active = 0" : "WHERE u.is_active = 0";
-$requestorWhere = $statsWhereClause ? $statsWhereClause . " AND u.role = 'requestor'" : "WHERE u.role = 'requestor'";
-$approverWhere = $statsWhereClause ? $statsWhereClause . " AND u.role = 'approver'" : "WHERE u.role = 'approver'";
-
-$activeUsersResult = $db->fetch(
-    "SELECT COUNT(*) as count FROM users_new u {$activeWhere}",
-    $statsParams
-);
-$inactiveUsersResult = $db->fetch(
-    "SELECT COUNT(*) as count FROM users_new u {$inactiveWhere}",
-    $statsParams
-);
-$requestorsResult = $db->fetch(
-    "SELECT COUNT(*) as count FROM users_new u {$requestorWhere}",
-    $statsParams
-);
-$approversResult = $db->fetch(
-    "SELECT COUNT(*) as count FROM users_new u {$approverWhere}",
-    $statsParams
-);
-
+$totalUsersStats = $totalUsersStatsResult ? $totalUsersStatsResult['count'] : 0;
 $activeUsers = $activeUsersResult ? $activeUsersResult['count'] : 0;
 $inactiveUsers = $inactiveUsersResult ? $inactiveUsersResult['count'] : 0;
 $requestorsCount = $requestorsResult ? $requestorsResult['count'] : 0;
@@ -128,7 +137,7 @@ include '../includes/admin_head.php';
                                     </div>
                                     <div>
                                         <p class="text-blue-600 text-xs font-medium uppercase tracking-wide">Total Users</p>
-                                        <p class="text-blue-900 text-xl font-bold"><?php echo $totalUsers; ?></p>
+                                        <p class="text-blue-900 text-xl font-bold"><?php echo $totalUsersStats; ?></p>
                                     </div>
                                 </div>
                             </div>
