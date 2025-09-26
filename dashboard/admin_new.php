@@ -106,8 +106,7 @@ include '../includes/admin_head.php';
                                 <p class="text-blue-900 text-2xl font-bold"><?php echo $stats['approved_quotations']; ?></p>
                             </a>
 
-                            <!-- Repairs In Progress (New System Only) -->
-                            <?php if ($useNewTables): ?>
+                            <!-- Repairs In Progress -->
                             <a href="quotation_manager.php?status=repair_in_progress"
                                class="block bg-white rounded-lg p-6 border border-blue-100 hover:shadow-lg hover:border-blue-200 transition-all cursor-pointer">
                                 <div class="flex items-center gap-3 mb-2">
@@ -118,7 +117,6 @@ include '../includes/admin_head.php';
                                 <p class="text-blue-900 text-sm font-medium mb-1">Repairs In Progress</p>
                                 <p class="text-blue-900 text-2xl font-bold"><?php echo $stats['repairs_in_progress']; ?></p>
                             </a>
-                            <?php endif; ?>
 
                             <!-- Completed Repairs -->
                             <div class="bg-white rounded-lg p-6 border border-blue-100 hover:shadow-lg transition-shadow">
@@ -132,7 +130,7 @@ include '../includes/admin_head.php';
                             </div>
 
                             <!-- Bills Generated -->
-                            <?php if ($useNewTables): ?>
+                            <!-- Bills Generated -->
                             <a href="quotation_manager.php?status=bill_generated"
                                class="block bg-white rounded-lg p-6 border border-blue-100 hover:shadow-lg hover:border-blue-200 transition-all cursor-pointer">
                                 <div class="flex items-center gap-3 mb-2">
@@ -143,20 +141,8 @@ include '../includes/admin_head.php';
                                 <p class="text-blue-900 text-sm font-medium mb-1">Bills Generated</p>
                                 <p class="text-blue-900 text-2xl font-bold"><?php echo $stats['bills_generated']; ?></p>
                             </a>
-                            <?php else: ?>
-                            <div class="bg-white rounded-lg p-6 border border-blue-100 hover:shadow-lg transition-shadow">
-                                <div class="flex items-center gap-3 mb-2">
-                                    <div class="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
-                                        <span class="material-icons text-blue-600 text-sm">receipt_long</span>
-                                    </div>
-                                </div>
-                                <p class="text-blue-900 text-sm font-medium mb-1">Bills Generated</p>
-                                <p class="text-blue-900 text-2xl font-bold"><?php echo $stats['bills_generated']; ?></p>
-                            </div>
-                            <?php endif; ?>
 
-                            <!-- Payments Received (New System Only) -->
-                            <?php if ($useNewTables): ?>
+                            <!-- Payments Received -->
                             <a href="quotation_manager.php?status=paid"
                                class="block bg-white rounded-lg p-6 border border-blue-100 hover:shadow-lg hover:border-blue-200 transition-all cursor-pointer">
                                 <div class="flex items-center gap-3 mb-2">
@@ -178,14 +164,12 @@ include '../includes/admin_head.php';
                                 <p class="text-blue-900 text-sm font-medium mb-1">Total Revenue</p>
                                 <p class="text-blue-900 text-xl font-bold"><?php echo formatCurrency($stats['total_revenue']); ?></p>
                             </div>
-                            <?php endif; ?>
                         </div>
 
                         <!-- Enhanced Quick Actions -->
                         <div class="mb-8">
                             <h2 class="text-blue-900 text-xl font-semibold mb-4">Quick Actions</h2>
                             <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                <?php if ($useNewTables): ?>
                                 <button onclick="location.href='quotation_manager.php'" class="bg-white border border-blue-200 rounded-lg p-4 hover:bg-blue-50 transition-colors flex items-center gap-3">
                                     <span class="material-icons text-blue-600">assignment_add</span>
                                     <span class="text-blue-900 font-medium text-sm">Quotation Manager</span>
@@ -198,33 +182,15 @@ include '../includes/admin_head.php';
                                     <span class="material-icons text-blue-600">analytics</span>
                                     <span class="text-blue-900 font-medium text-sm">View Reports</span>
                                 </button>
-                                <?php else: ?>
-                                <button onclick="location.href='quotations.php?action=create'" class="bg-white border border-blue-200 rounded-lg p-4 hover:bg-blue-50 transition-colors flex items-center gap-3">
-                                    <span class="material-icons text-blue-600">add_circle</span>
-                                    <span class="text-blue-900 font-medium text-sm">Create Quotation</span>
-                                </button>
-                                <?php endif; ?>
-
                                 <button onclick="location.href='users.php?action=create'" class="bg-white border border-blue-200 rounded-lg p-4 hover:bg-blue-50 transition-colors flex items-center gap-3">
                                     <span class="material-icons text-blue-600">person_add</span>
                                     <span class="text-blue-900 font-medium text-sm">Add User</span>
                                 </button>
-
-                                <?php if (!$useNewTables): ?>
-                                <button onclick="location.href='vehicles.php?action=create'" class="bg-white border border-blue-200 rounded-lg p-4 hover:bg-blue-50 transition-colors flex items-center gap-3">
-                                    <span class="material-icons text-blue-600">add</span>
-                                    <span class="text-blue-900 font-medium text-sm">Add Vehicle</span>
-                                </button>
-                                <button onclick="location.href='reports.php'" class="bg-white border border-blue-200 rounded-lg p-4 hover:bg-blue-50 transition-colors flex items-center gap-3">
-                                    <span class="material-icons text-blue-600">description</span>
-                                    <span class="text-blue-900 font-medium text-sm">Generate Report</span>
-                                </button>
-                                <?php endif; ?>
                             </div>
                         </div>
 
-                        <!-- Inventory Alerts (New System Only) -->
-                        <?php if ($useNewTables && !empty($inventoryAlerts) && $inventoryAlerts[0]['low_stock_count'] > 0): ?>
+                        <!-- Inventory Alerts -->
+                        <?php if (!empty($inventoryAlerts) && $inventoryAlerts[0]['low_stock_count'] > 0): ?>
                         <div class="mb-8">
                             <div class="bg-amber-50 border-l-4 border-amber-400 p-4 rounded-r-lg">
                                 <div class="flex items-center">
@@ -256,21 +222,12 @@ include '../includes/admin_head.php';
                                 <table class="w-full">
                                     <thead class="bg-blue-50">
                                         <tr>
-                                            <?php if ($useNewTables): ?>
                                             <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Quotation #</th>
                                             <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Customer</th>
                                             <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Vehicle</th>
                                             <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Amount</th>
                                             <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Status</th>
                                             <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Updated</th>
-                                            <?php else: ?>
-                                            <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Request ID</th>
-                                            <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Vehicle</th>
-                                            <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Customer</th>
-                                            <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Description</th>
-                                            <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Status</th>
-                                            <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Date</th>
-                                            <?php endif; ?>
                                         </tr>
                                     </thead>
                                     <tbody class="divide-y divide-blue-100">
@@ -281,7 +238,6 @@ include '../includes/admin_head.php';
                                         <?php else: ?>
                                             <?php foreach ($recentActivities as $activity): ?>
                                                 <tr class="hover:bg-blue-50">
-                                                    <?php if ($useNewTables): ?>
                                                     <td class="px-6 py-4 text-blue-900 text-sm font-medium">
                                                         <?php echo htmlspecialchars($activity['quotation_number']); ?>
                                                         <?php if ($activity['priority'] && $activity['priority'] !== 'medium'): ?>
@@ -293,12 +249,6 @@ include '../includes/admin_head.php';
                                                     <td class="px-6 py-4 text-blue-700 text-sm"><?php echo htmlspecialchars($activity['customer_name']); ?></td>
                                                     <td class="px-6 py-4 text-blue-700 text-sm"><?php echo htmlspecialchars($activity['vehicle_registration']); ?></td>
                                                     <td class="px-6 py-4 text-blue-900 text-sm font-medium"><?php echo formatCurrency($activity['total_amount']); ?></td>
-                                                    <?php else: ?>
-                                                    <td class="px-6 py-4 text-blue-900 text-sm font-medium">#<?php echo str_pad($activity['id'], 4, '0', STR_PAD_LEFT); ?></td>
-                                                    <td class="px-6 py-4 text-blue-700 text-sm"><?php echo htmlspecialchars($activity['registration_number']); ?></td>
-                                                    <td class="px-6 py-4 text-blue-700 text-sm"><?php echo htmlspecialchars($activity['requestor_name']); ?></td>
-                                                    <td class="px-6 py-4 text-blue-600 text-sm max-w-xs truncate"><?php echo htmlspecialchars(substr($activity['problem_description'], 0, 60)); ?>...</td>
-                                                    <?php endif; ?>
 
                                                     <td class="px-6 py-4 text-sm">
                                                         <?php
@@ -320,7 +270,7 @@ include '../includes/admin_head.php';
                                                         </span>
                                                     </td>
                                                     <td class="px-6 py-4 text-blue-600 text-sm">
-                                                        <?php echo date('M d, Y', strtotime($useNewTables ? $activity['updated_at'] : $activity['created_at'])); ?>
+                                                        <?php echo date('M d, Y', strtotime($activity['updated_at'])); ?>
                                                     </td>
                                                 </tr>
                                             <?php endforeach; ?>
