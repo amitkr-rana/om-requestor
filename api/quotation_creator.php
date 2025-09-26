@@ -72,21 +72,21 @@ function createDetailedQuotation() {
     }
 
 
-    // Check if service request exists and is pending
+    // Check if quotation exists and is pending
     try {
         $request = $db->fetch(
-            "SELECT sr.*, v.registration_number, u.full_name as requestor_name, u.organization_id
-             FROM service_requests sr
-             JOIN vehicles v ON sr.vehicle_id = v.id
-             JOIN users u ON sr.user_id = u.id
-             WHERE sr.id = ? AND sr.status = 'pending'",
+            "SELECT q.*, u.full_name as requestor_name, q.organization_id, o.name as organization_name
+             FROM quotations_new q
+             JOIN users_new u ON q.created_by = u.id
+             JOIN organizations_new o ON q.organization_id = o.id
+             WHERE q.id = ? AND q.status = 'pending'",
             [$request_id]
         );
 
         if (!$request) {
             ob_clean();
             http_response_code(404);
-            echo json_encode(['error' => 'Service request not found or already processed']);
+            echo json_encode(['error' => 'Quotation not found or already processed']);
             return;
         }
     } catch (Exception $e) {
@@ -97,30 +97,18 @@ function createDetailedQuotation() {
     }
 
     // Organization filtering
-    if ($_SESSION['organization_id'] != 2 && $request['organization_id'] != $_SESSION['organization_id']) {
+    if ($_SESSION['organization_id'] != 15 && $request['organization_id'] != $_SESSION['organization_id']) {
         ob_clean();
         http_response_code(403);
         echo json_encode(['error' => 'Access denied']);
         return;
     }
 
-    // Check if quotation already exists for this request
-    try {
-        $existingQuotation = $db->fetch(
-            "SELECT id FROM quotations WHERE request_id = ?",
-            [$request_id]
-        );
-
-        if ($existingQuotation) {
-            ob_clean();
-            http_response_code(400);
-            echo json_encode(['error' => 'Quotation already exists for this request']);
-            return;
-        }
-    } catch (Exception $e) {
+    // Check if quotation is already priced (has pricing details)
+    if ($request['total_amount'] > 0) {
         ob_clean();
-        http_response_code(500);
-        echo json_encode(['error' => 'Database error checking existing quotation: ' . $e->getMessage()]);
+        http_response_code(400);
+        echo json_encode(['error' => 'Quotation already has pricing details']);
         return;
     }
 
@@ -129,52 +117,88 @@ function createDetailedQuotation() {
         $db->beginTransaction();
 
         // Generate quotation number
-        $quotation_number = generateQuotationNumber($request_id);
+        $quotation_number = generateRequestBasedQuotationNumber($request_id);
 
         // Check if new columns exist, if not, use basic quotation creation
-        $columns = $db->fetchAll("DESCRIBE quotations");
-        $columnNames = array_column($columns, 'Field');
+        $columns = $db->fetchAll("DESCRIBE quotations_new");
+        $columnNames = $columns ? array_column($columns, 'Field') : [];
         $hasNewColumns = in_array('quotation_number', $columnNames) && in_array('base_service_charge', $columnNames);
 
+        // Generate quotation number if it doesn't exist
+        if (empty($request['quotation_number'])) {
+            // Extract first 3 letters of organization name
+            $orgPrefix = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $request['organization_name']), 0, 3));
+            $currentYear = date('Y');
+
+            // Get or create sequence for this organization and year
+            $sequence = $db->fetch(
+                "SELECT last_number FROM quotation_sequence WHERE organization_id = ? AND year = ?",
+                [$request['organization_id'], $currentYear]
+            );
+
+            if (!$sequence) {
+                // Create new sequence for the organization and year
+                $db->query(
+                    "INSERT INTO quotation_sequence (organization_id, year, last_number) VALUES (?, ?, 1)",
+                    [$request['organization_id'], $currentYear]
+                );
+                $nextNumber = 1;
+            } else {
+                $nextNumber = $sequence['last_number'] + 1;
+                // Update sequence
+                $db->query(
+                    "UPDATE quotation_sequence SET last_number = ? WHERE organization_id = ? AND year = ?",
+                    [$nextNumber, $request['organization_id'], $currentYear]
+                );
+            }
+
+            $quotationNumber = $orgPrefix . '-' . $currentYear . '-' . str_pad($nextNumber, 4, '0', STR_PAD_LEFT);
+
+            // Update the quotation with the generated number
+            $db->query(
+                "UPDATE quotations_new SET quotation_number = ? WHERE id = ?",
+                [$quotationNumber, $request_id]
+            );
+        }
+
         if ($hasNewColumns) {
-            // Create quotation with new schema
+            // Update existing quotation with pricing details
             $result = $db->query(
-                "INSERT INTO quotations
-                 (quotation_number, request_id, amount, base_service_charge,
-                  subtotal, sgst_rate, cgst_rate, sgst_amount, cgst_amount, total_amount, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sent')",
+                "UPDATE quotations_new
+                 SET base_service_charge = ?, parts_total = ?, subtotal = ?,
+                     tax_rate = ?, tax_amount = ?, total_amount = ?, status = 'sent',
+                     sent_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                 WHERE id = ?",
                 [
-                    $quotation_number,
-                    $request_id,
-                    $total_amount, // Keep for backward compatibility
                     $base_service_charge,
+                    ($subtotal - $base_service_charge), // parts_total
                     $subtotal,
-                    $sgst_rate,
-                    $cgst_rate,
-                    $sgst_amount,
-                    $cgst_amount,
-                    $total_amount
+                    ($sgst_rate + $cgst_rate), // tax_rate
+                    ($sgst_amount + $cgst_amount), // tax_amount
+                    $total_amount,
+                    $request_id
                 ]
             );
         } else {
-            // Fall back to basic quotation creation (old schema)
+            // Fall back to basic quotation update (old schema)
             $result = $db->query(
-                "INSERT INTO quotations (request_id, amount, status)
-                 VALUES (?, ?, 'sent')",
-                [$request_id, $total_amount]
+                "UPDATE quotations_new
+                 SET total_amount = ?, status = 'sent', sent_at = CURRENT_TIMESTAMP
+                 WHERE id = ?",
+                [$total_amount, $request_id]
             );
         }
 
         if (!$result) {
-            throw new Exception('Failed to create quotation');
+            throw new Exception('Failed to update quotation');
         }
 
-        $quotation_id = $db->lastInsertId();
+        $quotation_id = $request_id;
 
         // Insert quotation items (only if quotation_items table exists)
         if (!empty($items) && $hasNewColumns) {
             // Check if quotation_items table exists
-            $tables = $db->fetchAll("SHOW TABLES LIKE 'quotation_items'");
+            $tables = $db->fetchAll("SHOW TABLES LIKE 'quotation_items_new'");
             if (!empty($tables)) {
                 foreach ($items as $item) {
                     $item_type = sanitize($item['type'] ?? '');
@@ -184,21 +208,21 @@ function createDetailedQuotation() {
                     $amount = (float)($item['amount'] ?? 0);
 
                     if (!empty($description) && $rate > 0) {
+                        // Map old item types to new schema
+                        $mappedItemType = ($item_type === 'base_service') ? 'service' :
+                                         (($item_type === 'parts') ? 'part' : 'misc');
+
                         $db->query(
-                            "INSERT INTO quotation_items (quotation_id, item_type, description, quantity, rate, amount)
+                            "INSERT INTO quotation_items_new (quotation_id, item_type, description, quantity, rate, amount)
                              VALUES (?, ?, ?, ?, ?, ?)",
-                            [$quotation_id, $item_type, $description, $quantity, $rate, $amount]
+                            [$quotation_id, $mappedItemType, $description, $quantity, $rate, $amount]
                         );
                     }
                 }
             }
         }
 
-        // Update service request status
-        $db->query(
-            "UPDATE service_requests SET status = 'quoted', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            [$request_id]
-        );
+        // Quotation status already updated above
 
         // Commit transaction
         $db->commit();
@@ -245,6 +269,7 @@ function createStandaloneQuotation() {
     $vehicle_registration = sanitize($_POST['vehicle_registration'] ?? '');
     $customer_name = sanitize($_POST['customer_name'] ?? '');
     $customer_email = sanitize($_POST['customer_email'] ?? '');
+    $customer_phone = sanitize($_POST['customer_phone'] ?? '');
     $problem_description = sanitize($_POST['problem_description'] ?? '');
     $base_service_charge = (float)($_POST['base_service_charge'] ?? 0);
     $subtotal = (float)($_POST['subtotal'] ?? 0);
@@ -296,67 +321,38 @@ function createStandaloneQuotation() {
         // Start transaction
         $db->beginTransaction();
 
-        // Check if new columns exist for enhanced quotations
-        $columns = $db->fetchAll("DESCRIBE quotations");
-        $columnNames = array_column($columns, 'Field');
-        $hasNewColumns = in_array('quotation_number', $columnNames) && in_array('base_service_charge', $columnNames);
-        $hasStandaloneColumns = in_array('is_standalone', $columnNames) && in_array('standalone_customer_id', $columnNames);
-
-        // Create standalone customer record
-        if ($hasStandaloneColumns) {
-            // Check if standalone_customers table exists
-            $tables = $db->fetchAll("SHOW TABLES LIKE 'standalone_customers'");
-            if (empty($tables)) {
-                throw new Exception('Standalone customers table not found. Please run database updates.');
-            }
-
-            $customerResult = $db->query(
-                "INSERT INTO standalone_customers (request_id, vehicle_registration, customer_name, customer_email, problem_description, organization_id)
-                 VALUES (?, ?, ?, ?, ?, ?)",
-                [$request_id, $vehicle_registration, $customer_name, $customer_email, $problem_description, $_SESSION['organization_id']]
-            );
-
-            if (!$customerResult) {
-                throw new Exception('Failed to create customer record');
-            }
-
-            $standalone_customer_id = $db->lastInsertId();
-
-            // Generate quotation number
-            $quotation_number = 'QT-' . $request_id;
-
-            if ($hasNewColumns) {
-                // Create quotation with enhanced schema
-                $result = $db->query(
-                    "INSERT INTO quotations
-                     (quotation_number, request_id, is_standalone, standalone_customer_id, amount, base_service_charge,
-                      subtotal, sgst_rate, cgst_rate, sgst_amount, cgst_amount, total_amount, status)
-                     VALUES (?, 0, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sent')",
-                    [
-                        $quotation_number,
-                        $standalone_customer_id,
-                        $total_amount,
-                        $base_service_charge,
-                        $subtotal,
-                        $sgst_rate,
-                        $cgst_rate,
-                        $sgst_amount,
-                        $cgst_amount,
-                        $total_amount
-                    ]
-                );
-            } else {
-                // Fallback to basic quotation creation
-                $result = $db->query(
-                    "INSERT INTO quotations (request_id, is_standalone, standalone_customer_id, amount, status)
-                     VALUES (0, 1, ?, ?, 'sent')",
-                    [$standalone_customer_id, $total_amount]
-                );
-            }
-        } else {
-            // Fallback - create a temporary service request for backward compatibility
-            throw new Exception('Database schema not updated for standalone quotations. Please run database updates.');
+        // Check if quotations_new table exists
+        $tables = $db->fetchAll("SHOW TABLES LIKE 'quotations_new'");
+        if (empty($tables)) {
+            throw new Exception('Database schema not updated. quotations_new table not found.');
         }
+
+        // Use the quotation ID as the quotation number (D-YEAR-NUMBER format)
+        $quotation_number = $request_id;
+
+        // Create quotation directly in quotations_new with customer data
+        $result = $db->query(
+                "INSERT INTO quotations_new
+                 (quotation_number, organization_id, customer_name, customer_email, customer_phone,
+                  vehicle_registration, problem_description, base_service_charge, subtotal,
+                  tax_rate, tax_amount, total_amount, status, created_by, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?, NOW())",
+                [
+                    $quotation_number,
+                    $_SESSION['organization_id'],
+                    $customer_name,
+                    $customer_email,
+                    $customer_phone,
+                    $vehicle_registration,
+                    $problem_description,
+                    $base_service_charge,
+                    $subtotal,
+                    ($sgst_rate + $cgst_rate), // Total tax rate
+                    ($sgst_amount + $cgst_amount), // Total tax amount
+                    $total_amount,
+                    $_SESSION['user_id']
+                ]
+            );
 
         if (!$result) {
             throw new Exception('Failed to create quotation');
@@ -365,8 +361,8 @@ function createStandaloneQuotation() {
         $quotation_id = $db->lastInsertId();
 
         // Insert quotation items (if applicable)
-        if (!empty($items) && $hasNewColumns) {
-            $tables = $db->fetchAll("SHOW TABLES LIKE 'quotation_items'");
+        if (!empty($items)) {
+            $tables = $db->fetchAll("SHOW TABLES LIKE 'quotation_items_new'");
             if (!empty($tables)) {
                 foreach ($items as $item) {
                     $item_type = sanitize($item['type'] ?? '');
@@ -376,10 +372,14 @@ function createStandaloneQuotation() {
                     $amount = (float)($item['amount'] ?? 0);
 
                     if (!empty($description) && $rate > 0) {
+                        // Map old item types to new schema
+                        $mappedItemType = ($item_type === 'base_service') ? 'service' :
+                                         (($item_type === 'parts') ? 'part' : 'misc');
+
                         $db->query(
-                            "INSERT INTO quotation_items (quotation_id, item_type, description, quantity, rate, amount)
+                            "INSERT INTO quotation_items_new (quotation_id, item_type, description, quantity, rate, amount)
                              VALUES (?, ?, ?, ?, ?, ?)",
-                            [$quotation_id, $item_type, $description, $quantity, $rate, $amount]
+                            [$quotation_id, $mappedItemType, $description, $quantity, $rate, $amount]
                         );
                     }
                 }
@@ -492,11 +492,12 @@ function previewQuotation() {
         // Prepare quotation data for preview
         if ($is_standalone) {
             $quotationData = [
-                'quotation_number' => 'QT-PREVIEW-' . date('YmdHis'),
+                'quotation_number' => sanitize($_POST['request_id'] ?? ''),
                 'display_request_id' => sanitize($_POST['request_id'] ?? ''),
                 'formatted_date' => date('d-m-Y'),
                 'requestor_name' => sanitize($_POST['customer_name'] ?? ''),
                 'requestor_email' => sanitize($_POST['customer_email'] ?? ''),
+                'requestor_phone' => sanitize($_POST['customer_phone'] ?? ''),
                 'registration_number' => sanitize($_POST['vehicle_registration'] ?? ''),
                 'problem_description' => sanitize($_POST['problem_description'] ?? ''),
                 'base_service_charge' => (float)($_POST['base_service_charge'] ?? 0),
@@ -515,36 +516,49 @@ function previewQuotation() {
                 return;
             }
 
-            // Get service request details
+            // Get quotation details with organization information
             $serviceRequest = $db->fetch(
-                "SELECT sr.*, v.registration_number, u.full_name as requestor_name, u.email as requestor_email, u.organization_id
-                 FROM service_requests sr
-                 JOIN vehicles v ON sr.vehicle_id = v.id
-                 JOIN users u ON sr.user_id = u.id
-                 WHERE sr.id = ?",
+                "SELECT q.*, u.full_name as requestor_name, u.email as requestor_email, u.phone as requestor_phone,
+                        q.organization_id, o.name as organization_name
+                 FROM quotations_new q
+                 JOIN users_new u ON q.created_by = u.id
+                 JOIN organizations_new o ON q.organization_id = o.id
+                 WHERE q.id = ?",
                 [$request_id]
             );
 
             if (!$serviceRequest) {
                 http_response_code(404);
-                echo json_encode(['error' => 'Service request not found']);
+                echo json_encode(['error' => 'Quotation not found']);
                 return;
             }
 
             // Organization filtering
-            if ($_SESSION['organization_id'] != 2 && $serviceRequest['organization_id'] != $_SESSION['organization_id']) {
+            if ($_SESSION['organization_id'] != 15 && $serviceRequest['organization_id'] != $_SESSION['organization_id']) {
                 http_response_code(403);
                 echo json_encode(['error' => 'Access denied']);
                 return;
             }
 
+            // Generate organization-based quotation number if not exists
+            $quotationNumber = $serviceRequest['quotation_number'];
+            if (empty($quotationNumber)) {
+                // Extract first 3 letters of organization name
+                $orgPrefix = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $serviceRequest['organization_name']), 0, 3));
+                $currentYear = date('Y');
+
+                // For preview, use a temporary number format
+                $quotationNumber = $orgPrefix . '-' . $currentYear . '-PREVIEW';
+            }
+
             $quotationData = [
-                'quotation_number' => 'QT-PREVIEW-' . date('YmdHis'),
-                'display_request_id' => '#' . $request_id,
+                'quotation_number' => $quotationNumber,
+                'display_request_id' => $quotationNumber,
                 'formatted_date' => date('d-m-Y'),
                 'requestor_name' => $serviceRequest['requestor_name'],
                 'requestor_email' => $serviceRequest['requestor_email'],
-                'registration_number' => $serviceRequest['registration_number'],
+                'requestor_phone' => $serviceRequest['requestor_phone'],
+                'registration_number' => $serviceRequest['vehicle_registration'],
                 'problem_description' => $serviceRequest['problem_description'],
                 'base_service_charge' => (float)($_POST['base_service_charge'] ?? 0),
                 'subtotal' => (float)($_POST['subtotal'] ?? 0),
@@ -556,11 +570,39 @@ function previewQuotation() {
             ];
         }
 
-        // Validate required fields
+        // Validate required fields in logical order
+        $errors = [];
 
+        // 1. Customer name first (always required)
+        if (empty($quotationData['requestor_name'])) {
+            $errors[] = 'Customer name is required';
+        }
+
+        // 2. Problem description second (always required)
+        if (empty($quotationData['problem_description'])) {
+            $errors[] = 'Problem description is required';
+        }
+
+        // 3. Vehicle registration third (only for regular quotations)
+        if (!$is_standalone && empty($quotationData['registration_number'])) {
+            $errors[] = 'Vehicle registration is required';
+        }
+
+        // 4. Financial validations last
         if ($quotationData['base_service_charge'] <= 0) {
+            $errors[] = 'Base service charge must be greater than zero';
+        }
+
+        if ($quotationData['total_amount'] <= 0) {
+            $errors[] = 'Total amount must be greater than zero';
+        }
+
+        // Email is optional for standalone quotations (walk-in customers may not have email)
+
+        if (!empty($errors)) {
+            ob_clean();
             http_response_code(400);
-            echo json_encode(['error' => 'Base service charge must be greater than zero']);
+            echo json_encode(['error' => implode(', ', $errors)]);
             return;
         }
 
@@ -803,15 +845,11 @@ function generatePreviewHTML($quotation, $items, $theme = 'light') {
             <div class="quotation-info">
                 <div class="section-title">Quotation Details</div>
                 <div class="info-row">
-                    <span class="info-label">Quotation No:</span>
-                    <span><?php echo htmlspecialchars($quotation['quotation_number']); ?></span>
-                </div>
-                <div class="info-row">
                     <span class="info-label">Date:</span>
                     <span><?php echo $quotation['formatted_date']; ?></span>
                 </div>
                 <div class="info-row">
-                    <span class="info-label">Request ID:</span>
+                    <span class="info-label">Quotation ID:</span>
                     <span><?php echo htmlspecialchars($quotation['display_request_id']); ?></span>
                 </div>
             </div>
@@ -826,6 +864,12 @@ function generatePreviewHTML($quotation, $items, $theme = 'light') {
                     <span class="info-label">Email:</span>
                     <span><?php echo htmlspecialchars($quotation['requestor_email']); ?></span>
                 </div>
+                <?php if (!empty($quotation['requestor_phone'])): ?>
+                <div class="info-row">
+                    <span class="info-label">Phone:</span>
+                    <span><?php echo htmlspecialchars($quotation['requestor_phone']); ?></span>
+                </div>
+                <?php endif; ?>
                 <div class="info-row">
                     <span class="info-label">Vehicle:</span>
                     <span><?php echo htmlspecialchars($quotation['registration_number']); ?></span>
@@ -918,7 +962,7 @@ function generatePreviewHTML($quotation, $items, $theme = 'light') {
     return $html;
 }
 
-function generateQuotationNumber($request_id) {
+function generateRequestBasedQuotationNumber($request_id) {
     // Using request ID based quotation number for traceability
     return 'QT-REQ-' . str_pad($request_id, 4, '0', STR_PAD_LEFT);
 }

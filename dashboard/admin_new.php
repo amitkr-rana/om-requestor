@@ -22,7 +22,11 @@ $paymentsReceivedResult = $db->fetch("SELECT COUNT(*) as count FROM quotations_n
 $revenueResult = $db->fetch("SELECT COALESCE(SUM(b.paid_amount), 0) as revenue FROM billing b JOIN quotations_new q ON b.quotation_id = q.id $orgFilter", $orgParams);
 $outstandingResult = $db->fetch("SELECT COALESCE(SUM(b.balance_amount), 0) as outstanding FROM billing b JOIN quotations_new q ON b.quotation_id = q.id WHERE q.organization_id = ? AND b.payment_status IN ('unpaid', 'partial')", $orgParams);
 
+// Get total quotations count
+$totalQuotationsResult = $db->fetch("SELECT COUNT(*) as count FROM quotations_new q $orgFilter", $orgParams);
+
 $stats = [
+    'total_quotations' => $totalQuotationsResult ? $totalQuotationsResult['count'] : 0,
     'pending_quotations' => $pendingQuotationsResult ? $pendingQuotationsResult['count'] : 0,
     'sent_quotations' => $sentQuotationsResult ? $sentQuotationsResult['count'] : 0,
     'approved_quotations' => $approvedQuotationsResult ? $approvedQuotationsResult['count'] : 0,
@@ -70,6 +74,18 @@ include '../includes/admin_head.php';
                     <!-- Enhanced Metrics Cards -->
                     <div class="p-6">
                         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-8">
+                            <!-- Total Quotations -->
+                            <a href="quotation_manager.php"
+                               class="block bg-white rounded-lg p-6 border border-blue-100 hover:shadow-lg hover:border-blue-200 transition-all cursor-pointer">
+                                <div class="flex items-center gap-3 mb-2">
+                                    <div class="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
+                                        <span class="material-icons text-blue-600 text-sm">receipt_long</span>
+                                    </div>
+                                </div>
+                                <p class="text-blue-900 text-sm font-medium mb-1">Total Quotations</p>
+                                <p class="text-blue-900 text-2xl font-bold"><?php echo $stats['total_quotations']; ?></p>
+                            </a>
+
                             <!-- Pending Quotations -->
                             <a href="quotation_manager.php?status=pending"
                                class="block bg-white rounded-lg p-6 border border-blue-100 hover:shadow-lg hover:border-blue-200 transition-all cursor-pointer">

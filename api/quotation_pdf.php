@@ -15,15 +15,8 @@ if ($quotation_id <= 0) {
 
 // Verify quotation exists and user has access
 $quotation = $db->fetch(
-    "SELECT q.*,
-            CASE
-                WHEN q.is_standalone = 1 THEN sc.organization_id
-                ELSE u.organization_id
-            END as organization_id
-     FROM quotations q
-     LEFT JOIN service_requests sr ON q.request_id = sr.id
-     LEFT JOIN users u ON sr.user_id = u.id
-     LEFT JOIN standalone_customers sc ON q.standalone_customer_id = sc.id
+    "SELECT q.*, q.organization_id
+     FROM quotations_new q
      WHERE q.id = ?",
     [$quotation_id]
 );
@@ -35,7 +28,7 @@ if (!$quotation) {
 }
 
 // Organization filtering
-if ($_SESSION['organization_id'] != 2 && $quotation['organization_id'] != $_SESSION['organization_id']) {
+if ($_SESSION['organization_id'] != 15 && $quotation['organization_id'] != $_SESSION['organization_id']) {
     http_response_code(403);
     echo json_encode(['error' => 'Access denied']);
     exit;

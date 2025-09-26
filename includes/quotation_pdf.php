@@ -10,35 +10,17 @@ class QuotationPDF {
     }
 
     public function generateQuotationPDF($quotation_id) {
-        // Get quotation details - check if it's standalone or regular
+        // Get quotation details from new schema (all customer data is directly stored)
         $quotation = $this->db->fetch(
             "SELECT q.*,
-                    CASE
-                        WHEN q.is_standalone = 1 THEN sc.problem_description
-                        ELSE sr.problem_description
-                    END as problem_description,
-                    CASE
-                        WHEN q.is_standalone = 1 THEN sc.vehicle_registration
-                        ELSE v.registration_number
-                    END as registration_number,
-                    CASE
-                        WHEN q.is_standalone = 1 THEN sc.customer_name
-                        ELSE u.full_name
-                    END as requestor_name,
-                    CASE
-                        WHEN q.is_standalone = 1 THEN sc.customer_email
-                        ELSE u.email
-                    END as requestor_email,
-                    CASE
-                        WHEN q.is_standalone = 1 THEN sc.request_id
-                        ELSE CONCAT('#', q.request_id)
-                    END as display_request_id,
+                    q.problem_description,
+                    q.vehicle_registration as registration_number,
+                    q.customer_name as requestor_name,
+                    q.customer_email as requestor_email,
+                    q.customer_phone as requestor_phone,
+                    q.quotation_number as display_request_id,
                     DATE_FORMAT(q.created_at, '%d-%m-%Y') as formatted_date
-             FROM quotations q
-             LEFT JOIN service_requests sr ON q.request_id = sr.id
-             LEFT JOIN vehicles v ON sr.vehicle_id = v.id
-             LEFT JOIN users u ON sr.user_id = u.id
-             LEFT JOIN standalone_customers sc ON q.standalone_customer_id = sc.id
+             FROM quotations_new q
              WHERE q.id = ?",
             [$quotation_id]
         );
@@ -49,7 +31,7 @@ class QuotationPDF {
 
         // Get quotation items
         $items = $this->db->fetchAll(
-            "SELECT * FROM quotation_items WHERE quotation_id = ? ORDER BY id",
+            "SELECT * FROM quotation_items_new WHERE quotation_id = ? ORDER BY sort_order, id",
             [$quotation_id]
         );
 
@@ -334,7 +316,7 @@ class QuotationPDF {
         $html = $this->generateQuotationPDF($quotation_id);
 
         if (!$filename) {
-            $quotation = $this->db->fetch("SELECT quotation_number FROM quotations WHERE id = ?", [$quotation_id]);
+            $quotation = $this->db->fetch("SELECT quotation_number FROM quotations_new WHERE id = ?", [$quotation_id]);
             $filename = 'Quotation-' . ($quotation['quotation_number'] ?? $quotation_id) . '.html';
         }
 

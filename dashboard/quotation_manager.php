@@ -3,64 +3,110 @@ require_once '../includes/functions.php';
 
 requireLogin();
 
-// Get user's quotations based on role
-$quotations = [];
-$stats = [];
+// Handle pagination and filters
+$page = (int)($_GET['page'] ?? 1);
+$limit = ITEMS_PER_PAGE;
+$offset = ($page - 1) * $limit;
 
+$status_filter = sanitize($_GET['status'] ?? '');
+$priority_filter = sanitize($_GET['priority'] ?? '');
+$date_from = sanitize($_GET['date_from'] ?? '');
+$date_to = sanitize($_GET['date_to'] ?? '');
+$search = sanitize($_GET['search'] ?? '');
+
+// Build query conditions
+$conditions = [];
+$params = [];
+
+// Organization filtering based on user role
 if ($_SESSION['role'] === 'requestor') {
-    // For requestors, show their own quotations
-    $quotations = $db->fetchAll(
-        "SELECT q.*, u.full_name as created_by_name, a.full_name as approved_by_name
-         FROM quotations_new q
-         LEFT JOIN users_new u ON q.created_by = u.id
-         LEFT JOIN users_new a ON q.approved_by = a.id
-         WHERE q.created_by = ? AND q.organization_id = ?
-         ORDER BY q.created_at DESC
-         LIMIT 50",
-        [$_SESSION['user_id'], $_SESSION['organization_id']]
-    );
-
-    $stats = [
-        'total' => $db->fetch("SELECT COUNT(*) as count FROM quotations_new WHERE created_by = ?", [$_SESSION['user_id']])['count'],
-        'pending' => $db->fetch("SELECT COUNT(*) as count FROM quotations_new WHERE created_by = ? AND status = 'pending'", [$_SESSION['user_id']])['count'],
-        'sent' => $db->fetch("SELECT COUNT(*) as count FROM quotations_new WHERE created_by = ? AND status = 'sent'", [$_SESSION['user_id']])['count'],
-        'approved' => $db->fetch("SELECT COUNT(*) as count FROM quotations_new WHERE created_by = ? AND status = 'approved'", [$_SESSION['user_id']])['count'],
-        'completed' => $db->fetch("SELECT COUNT(*) as count FROM quotations_new WHERE created_by = ? AND status IN ('repair_complete', 'bill_generated', 'paid')", [$_SESSION['user_id']])['count']
-    ];
+    // Requestors see only their own quotations
+    $conditions[] = "q.created_by = ? AND q.organization_id = ?";
+    $params[] = $_SESSION['user_id'];
+    $params[] = $_SESSION['organization_id'];
 } else {
-    // For admin/approver, show all quotations in their organization
-    $quotations = $db->fetchAll(
-        "SELECT q.*, u.full_name as created_by_name, a.full_name as approved_by_name, t.full_name as assigned_to_name
-         FROM quotations_new q
-         LEFT JOIN users_new u ON q.created_by = u.id
-         LEFT JOIN users_new a ON q.approved_by = a.id
-         LEFT JOIN users_new t ON q.assigned_to = t.id
-         WHERE q.organization_id = ?
-         ORDER BY q.created_at DESC
-         LIMIT 50",
-        [$_SESSION['organization_id']]
-    );
-
-    $stats = [
-        'total' => $db->fetch("SELECT COUNT(*) as count FROM quotations_new WHERE organization_id = ?", [$_SESSION['organization_id']])['count'],
-        'pending' => $db->fetch("SELECT COUNT(*) as count FROM quotations_new WHERE organization_id = ? AND status = 'pending'", [$_SESSION['organization_id']])['count'],
-        'sent' => $db->fetch("SELECT COUNT(*) as count FROM quotations_new WHERE organization_id = ? AND status = 'sent'", [$_SESSION['organization_id']])['count'],
-        'approved' => $db->fetch("SELECT COUNT(*) as count FROM quotations_new WHERE organization_id = ? AND status = 'approved'", [$_SESSION['organization_id']])['count'],
-        'in_progress' => $db->fetch("SELECT COUNT(*) as count FROM quotations_new WHERE organization_id = ? AND status = 'repair_in_progress'", [$_SESSION['organization_id']])['count'],
-        'completed' => $db->fetch("SELECT COUNT(*) as count FROM quotations_new WHERE organization_id = ? AND status IN ('repair_complete', 'bill_generated', 'paid')", [$_SESSION['organization_id']])['count']
-    ];
+    // Admin/approver see all quotations in their organization
+    if ($_SESSION['organization_id'] != 15) { // If not Om Engineers system admin
+        $conditions[] = "q.organization_id = ?";
+        $params[] = $_SESSION['organization_id'];
+    }
 }
 
-// Get recent activity
-$recent_activity = $db->fetchAll(
-    "SELECT ual.*, u.full_name as user_name
-     FROM user_activity_log ual
-     JOIN users_new u ON ual.user_id = u.id
-     WHERE ual.organization_id = ? AND ual.entity_type = 'quotation'
-     ORDER BY ual.created_at DESC
-     LIMIT 10",
-    [$_SESSION['organization_id']]
+if ($status_filter) {
+    $conditions[] = "q.status = ?";
+    $params[] = $status_filter;
+}
+
+if ($priority_filter) {
+    $conditions[] = "q.priority = ?";
+    $params[] = $priority_filter;
+}
+
+if ($date_from) {
+    $conditions[] = "DATE(q.created_at) >= ?";
+    $params[] = $date_from;
+}
+
+if ($date_to) {
+    $conditions[] = "DATE(q.created_at) <= ?";
+    $params[] = $date_to;
+}
+
+if ($search) {
+    $conditions[] = "(q.quotation_number LIKE ? OR q.customer_name LIKE ? OR q.vehicle_registration LIKE ?)";
+    $params[] = "%{$search}%";
+    $params[] = "%{$search}%";
+    $params[] = "%{$search}%";
+}
+
+$whereClause = !empty($conditions) ? 'WHERE ' . implode(' AND ', $conditions) : '';
+
+// Get total count for pagination
+$totalResult = $db->fetch(
+    "SELECT COUNT(*) as count FROM quotations_new q {$whereClause}",
+    $params
 );
+$totalQuotations = $totalResult ? $totalResult['count'] : 0;
+
+// Get quotations with pagination
+$quotations = $db->fetchAll(
+    "SELECT q.*, u.full_name as created_by_name, a.full_name as approved_by_name, t.full_name as assigned_to_name
+     FROM quotations_new q
+     LEFT JOIN users_new u ON q.created_by = u.id
+     LEFT JOIN users_new a ON q.approved_by = a.id
+     LEFT JOIN users_new t ON q.assigned_to = t.id
+     {$whereClause}
+     ORDER BY q.created_at DESC
+     LIMIT {$limit} OFFSET {$offset}",
+    $params
+);
+
+$pagination = paginate($page, $totalQuotations, $limit);
+
+// Get statistics for dashboard cards - independent of filters
+$statsConditions = [];
+$statsParams = [];
+
+if ($_SESSION['role'] === 'requestor') {
+    $statsConditions[] = "q.created_by = ? AND q.organization_id = ?";
+    $statsParams[] = $_SESSION['user_id'];
+    $statsParams[] = $_SESSION['organization_id'];
+} else {
+    if ($_SESSION['organization_id'] != 15) {
+        $statsConditions[] = "q.organization_id = ?";
+        $statsParams[] = $_SESSION['organization_id'];
+    }
+}
+
+$statsWhereClause = !empty($statsConditions) ? 'WHERE ' . implode(' AND ', $statsConditions) : '';
+
+// Get statistics
+$totalQuotationsStats = $db->fetch("SELECT COUNT(*) as count FROM quotations_new q {$statsWhereClause}", $statsParams)['count'] ?? 0;
+$pendingQuotations = $db->fetch("SELECT COUNT(*) as count FROM quotations_new q {$statsWhereClause} AND q.status = 'pending'", array_merge($statsParams, ['pending']))['count'] ?? 0;
+$sentQuotations = $db->fetch("SELECT COUNT(*) as count FROM quotations_new q {$statsWhereClause} AND q.status = 'sent'", array_merge($statsParams, ['sent']))['count'] ?? 0;
+$approvedQuotations = $db->fetch("SELECT COUNT(*) as count FROM quotations_new q {$statsWhereClause} AND q.status = 'approved'", array_merge($statsParams, ['approved']))['count'] ?? 0;
+$inProgressQuotations = $db->fetch("SELECT COUNT(*) as count FROM quotations_new q {$statsWhereClause} AND q.status = 'repair_in_progress'", array_merge($statsParams, ['repair_in_progress']))['count'] ?? 0;
+$completedQuotations = $db->fetch("SELECT COUNT(*) as count FROM quotations_new q {$statsWhereClause} AND q.status IN ('repair_complete', 'bill_generated', 'paid')", $statsParams)['count'] ?? 0;
 
 // Get available technicians for assignment (admin only)
 $technicians = [];
@@ -72,396 +118,364 @@ if ($_SESSION['role'] === 'admin') {
         [$_SESSION['organization_id']]
     );
 }
+
+// Set page title
+$pageTitle = 'Quotation Management';
 ?>
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quotation Manager - <?php echo APP_NAME; ?></title>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-    <link href="../assets/css/material.css" rel="stylesheet">
-    <link href="../assets/css/style-base.css" rel="stylesheet">
-    <style>
-        .quotation-card {
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 16px;
-            padding: 20px;
-            transition: box-shadow 0.3s ease;
-        }
-        .quotation-card:hover {
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        }
-        .quotation-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 16px;
-        }
-        .quotation-number {
-            font-size: 18px;
-            font-weight: 600;
-            color: #1976d2;
-            margin-bottom: 4px;
-        }
-        .customer-info {
-            color: #666;
-            font-size: 14px;
-        }
-        .status-badge {
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 500;
-            text-transform: uppercase;
-        }
-        .status-pending { background: #fff3cd; color: #856404; }
-        .status-sent { background: #d1ecf1; color: #0c5460; }
-        .status-approved { background: #d4edda; color: #155724; }
-        .status-rejected { background: #f8d7da; color: #721c24; }
-        .status-repair_in_progress { background: #e2e3f0; color: #383d41; }
-        .status-repair_complete { background: #bee5eb; color: #0f4c75; }
-        .status-bill_generated { background: #ffeaa7; color: #6c5ce7; }
-        .status-paid { background: #00b894; color: white; }
-        .status-cancelled { background: #636e72; color: white; }
+<?php
+include '../includes/admin_head.php';
+?>
+<?php include '../includes/admin_sidebar_new.php'; ?>
+                <div class="layout-content-container flex flex-col flex-1 overflow-y-auto">
+                    <?php include '../includes/admin_header.php'; ?>
 
-        .quotation-details {
-            margin: 16px 0;
-            padding: 16px;
-            background: #f8f9fa;
-            border-radius: 6px;
-        }
-        .quotation-actions {
-            display: flex;
-            gap: 8px;
-            margin-top: 16px;
-            flex-wrap: wrap;
-        }
-        .btn-sm {
-            padding: 6px 12px;
-            font-size: 12px;
-            border-radius: 4px;
-            border: none;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-        .btn-primary { background: #1976d2; color: white; }
-        .btn-success { background: #388e3c; color: white; }
-        .btn-danger { background: #d32f2f; color: white; }
-        .btn-warning { background: #f57c00; color: white; }
-        .btn-info { background: #0288d1; color: white; }
-        .btn-secondary { background: #6c757d; color: white; }
+                    <!-- Main Content -->
+                    <div class="p-6">
 
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        .stat-card {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            text-align: center;
-        }
-        .stat-number {
-            font-size: 32px;
-            font-weight: 700;
-            color: #1976d2;
-            margin-bottom: 8px;
-        }
-        .stat-label {
-            color: #666;
-            text-transform: uppercase;
-            font-size: 12px;
-            font-weight: 500;
-        }
-
-        .filters {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-        .filter-row {
-            display: flex;
-            gap: 16px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-
-        .timeline-item {
-            border-left: 2px solid #e0e0e0;
-            padding-left: 16px;
-            margin-bottom: 16px;
-            position: relative;
-        }
-        .timeline-item::before {
-            content: '';
-            position: absolute;
-            left: -6px;
-            top: 4px;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: #1976d2;
-        }
-
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0,0,0,0.5);
-        }
-        .modal-content {
-            background-color: white;
-            margin: 5% auto;
-            padding: 30px;
-            border-radius: 8px;
-            width: 90%;
-            max-width: 600px;
-            max-height: 80vh;
-            overflow-y: auto;
-        }
-        .close {
-            color: #aaa;
-            float: right;
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-            line-height: 1;
-        }
-        .close:hover {
-            color: black;
-        }
-    </style>
-</head>
-<body>
-    <div class="dashboard-layout">
-        <!-- Header -->
-        <header class="dashboard-header">
-            <div class="header-content">
-                <h1>Quotation Manager</h1>
-                <div class="header-actions">
-                    <?php if ($_SESSION['role'] === 'requestor'): ?>
-                        <button class="btn btn-primary" onclick="showCreateModal()">
-                            <i class="material-icons">add</i> Create Quotation Request
-                        </button>
-                    <?php endif; ?>
-                    <span class="user-info">
-                        Welcome, <?php echo htmlspecialchars($_SESSION['full_name']); ?>
-                        (<?php echo ucfirst($_SESSION['role']); ?>)
-                    </span>
-                    <a href="../api/auth.php?action=logout" class="btn btn-outline">Logout</a>
-                </div>
-            </div>
-        </header>
-
-        <!-- Stats Dashboard -->
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-number"><?php echo $stats['total']; ?></div>
-                <div class="stat-label">Total Quotations</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number"><?php echo $stats['pending']; ?></div>
-                <div class="stat-label">Pending</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number"><?php echo $stats['sent'] ?? 0; ?></div>
-                <div class="stat-label">Sent for Approval</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number"><?php echo $stats['approved']; ?></div>
-                <div class="stat-label">Approved</div>
-            </div>
-            <?php if ($_SESSION['role'] !== 'requestor'): ?>
-            <div class="stat-card">
-                <div class="stat-number"><?php echo $stats['in_progress'] ?? 0; ?></div>
-                <div class="stat-label">In Progress</div>
-            </div>
-            <?php endif; ?>
-            <div class="stat-card">
-                <div class="stat-number"><?php echo $stats['completed']; ?></div>
-                <div class="stat-label">Completed</div>
-            </div>
-        </div>
-
-        <!-- Filters -->
-        <div class="filters">
-            <div class="filter-row">
-                <select id="statusFilter" class="form-control" onchange="filterQuotations()">
-                    <option value="">All Status</option>
-                    <option value="pending">Pending</option>
-                    <option value="sent">Sent for Approval</option>
-                    <option value="approved">Approved</option>
-                    <option value="rejected">Rejected</option>
-                    <option value="repair_in_progress">In Progress</option>
-                    <option value="repair_complete">Repair Complete</option>
-                    <option value="bill_generated">Bill Generated</option>
-                    <option value="paid">Paid</option>
-                </select>
-                <input type="text" id="searchFilter" class="form-control" placeholder="Search by customer, vehicle, or quotation number..." onkeyup="filterQuotations()">
-                <button class="btn btn-secondary" onclick="clearFilters()">Clear</button>
-                <button class="btn btn-info" onclick="refreshQuotations()">
-                    <i class="material-icons">refresh</i> Refresh
-                </button>
-            </div>
-        </div>
-
-        <!-- Main Content -->
-        <div class="main-content">
-            <div class="content-grid">
-                <!-- Quotations List -->
-                <div class="quotations-section">
-                    <h2>
-                        <?php echo $_SESSION['role'] === 'requestor' ? 'My Quotation Requests' : 'All Quotations'; ?>
-                        <span class="count">(<?php echo count($quotations); ?>)</span>
-                    </h2>
-                    <div id="quotations-container">
-                        <?php foreach ($quotations as $quotation): ?>
-                            <div class="quotation-card" data-status="<?php echo $quotation['status']; ?>" data-search="<?php echo htmlspecialchars(strtolower($quotation['quotation_number'] . ' ' . $quotation['customer_name'] . ' ' . $quotation['vehicle_registration'])); ?>">
-                                <div class="quotation-header">
+                        <!-- Quotation Statistics -->
+                        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+                            <div class="bg-white rounded-lg p-4 border border-blue-100 shadow-sm">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                                        <span class="material-icons text-blue-600 text-lg">receipt_long</span>
+                                    </div>
                                     <div>
-                                        <div class="quotation-number"><?php echo htmlspecialchars($quotation['quotation_number']); ?></div>
-                                        <div class="customer-info">
-                                            <strong><?php echo htmlspecialchars($quotation['customer_name']); ?></strong><br>
-                                            <i class="material-icons" style="font-size: 14px; vertical-align: middle;">directions_car</i>
-                                            <?php echo htmlspecialchars($quotation['vehicle_registration']); ?>
-                                            <?php if ($quotation['vehicle_make_model']): ?>
-                                                (<?php echo htmlspecialchars($quotation['vehicle_make_model']); ?>)
+                                        <p class="text-blue-600 text-xs font-medium uppercase tracking-wide">Total Quotations</p>
+                                        <p class="text-blue-900 text-xl font-bold"><?php echo $totalQuotationsStats; ?></p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-white rounded-lg p-4 border border-yellow-100 shadow-sm">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-lg bg-yellow-100 flex items-center justify-center">
+                                        <span class="material-icons text-yellow-600 text-lg">pending_actions</span>
+                                    </div>
+                                    <div>
+                                        <p class="text-yellow-600 text-xs font-medium uppercase tracking-wide">Pending</p>
+                                        <p class="text-yellow-900 text-xl font-bold"><?php echo $pendingQuotations; ?></p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-white rounded-lg p-4 border border-orange-100 shadow-sm">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center">
+                                        <span class="material-icons text-orange-600 text-lg">send</span>
+                                    </div>
+                                    <div>
+                                        <p class="text-orange-600 text-xs font-medium uppercase tracking-wide">Sent</p>
+                                        <p class="text-orange-900 text-xl font-bold"><?php echo $sentQuotations; ?></p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-white rounded-lg p-4 border border-green-100 shadow-sm">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+                                        <span class="material-icons text-green-600 text-lg">check_circle</span>
+                                    </div>
+                                    <div>
+                                        <p class="text-green-600 text-xs font-medium uppercase tracking-wide">Approved</p>
+                                        <p class="text-green-900 text-xl font-bold"><?php echo $approvedQuotations; ?></p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <?php if ($_SESSION['role'] !== 'requestor'): ?>
+                            <div class="bg-white rounded-lg p-4 border border-purple-100 shadow-sm">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
+                                        <span class="material-icons text-purple-600 text-lg">build</span>
+                                    </div>
+                                    <div>
+                                        <p class="text-purple-600 text-xs font-medium uppercase tracking-wide">In Progress</p>
+                                        <p class="text-purple-900 text-xl font-bold"><?php echo $inProgressQuotations; ?></p>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php endif; ?>
+
+                            <div class="bg-white rounded-lg p-4 border border-teal-100 shadow-sm">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-lg bg-teal-100 flex items-center justify-center">
+                                        <span class="material-icons text-teal-600 text-lg">done_all</span>
+                                    </div>
+                                    <div>
+                                        <p class="text-teal-600 text-xs font-medium uppercase tracking-wide">Completed</p>
+                                        <p class="text-teal-900 text-xl font-bold"><?php echo $completedQuotations; ?></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Filters and Actions -->
+                        <div class="bg-white rounded-lg border border-blue-100 shadow-sm mb-6">
+                            <div class="p-4 border-b border-blue-100">
+                                <div class="flex justify-between items-center">
+                                    <h2 class="text-blue-900 text-lg font-semibold">Filters</h2>
+                                    <div class="flex gap-3">
+                                        <?php if ($_SESSION['role'] === 'requestor'): ?>
+                                            <button class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2" onclick="showCreateModal()">
+                                                <span class="material-icons text-sm">add</span>
+                                                Create Quotation
+                                            </button>
+                                        <?php endif; ?>
+                                        <?php if ($_SESSION['role'] === 'admin'): ?>
+                                            <a href="quotation_creator.php" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2">
+                                                <span class="material-icons text-sm">flash_on</span>
+                                                Quick Quotation
+                                            </a>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Filters -->
+                            <div class="p-4 bg-gray-50">
+                                <form method="GET" action="" class="grid grid-cols-1 md:grid-cols-6 gap-4">
+                                    <div>
+                                        <label for="status" class="block text-sm font-medium text-blue-900 mb-2">Status</label>
+                                        <select id="status" name="status" class="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                            <option value="">All Status</option>
+                                            <option value="pending" <?php echo $status_filter === 'pending' ? 'selected' : ''; ?>>Pending</option>
+                                            <option value="sent" <?php echo $status_filter === 'sent' ? 'selected' : ''; ?>>Sent</option>
+                                            <option value="approved" <?php echo $status_filter === 'approved' ? 'selected' : ''; ?>>Approved</option>
+                                            <option value="rejected" <?php echo $status_filter === 'rejected' ? 'selected' : ''; ?>>Rejected</option>
+                                            <option value="repair_in_progress" <?php echo $status_filter === 'repair_in_progress' ? 'selected' : ''; ?>>In Progress</option>
+                                            <option value="repair_complete" <?php echo $status_filter === 'repair_complete' ? 'selected' : ''; ?>>Repair Complete</option>
+                                            <option value="bill_generated" <?php echo $status_filter === 'bill_generated' ? 'selected' : ''; ?>>Bill Generated</option>
+                                            <option value="paid" <?php echo $status_filter === 'paid' ? 'selected' : ''; ?>>Paid</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label for="priority" class="block text-sm font-medium text-blue-900 mb-2">Priority</label>
+                                        <select id="priority" name="priority" class="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                            <option value="">All Priority</option>
+                                            <option value="low" <?php echo $priority_filter === 'low' ? 'selected' : ''; ?>>Low</option>
+                                            <option value="medium" <?php echo $priority_filter === 'medium' ? 'selected' : ''; ?>>Medium</option>
+                                            <option value="high" <?php echo $priority_filter === 'high' ? 'selected' : ''; ?>>High</option>
+                                            <option value="urgent" <?php echo $priority_filter === 'urgent' ? 'selected' : ''; ?>>Urgent</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label for="date_from" class="block text-sm font-medium text-blue-900 mb-2">From Date</label>
+                                        <input type="date" id="date_from" name="date_from" value="<?php echo htmlspecialchars($date_from); ?>" class="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                    </div>
+                                    <div>
+                                        <label for="date_to" class="block text-sm font-medium text-blue-900 mb-2">To Date</label>
+                                        <input type="date" id="date_to" name="date_to" value="<?php echo htmlspecialchars($date_to); ?>" class="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                    </div>
+                                    <div>
+                                        <label for="search" class="block text-sm font-medium text-blue-900 mb-2">Search</label>
+                                        <input type="text" id="search" name="search" value="<?php echo htmlspecialchars($search); ?>" placeholder="Search quotations..." class="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                    </div>
+                                    <div class="flex items-end gap-2">
+                                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2">
+                                            <span class="material-icons text-sm">search</span>
+                                            Search
+                                        </button>
+                                        <a href="quotation_manager.php" class="border border-blue-200 hover:bg-blue-50 text-blue-700 px-4 py-2 rounded-lg font-medium">Clear</a>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+
+                        <!-- Quotations List -->
+                        <div class="bg-white rounded-lg border border-blue-100 shadow-sm">
+                            <div class="p-4 border-b border-blue-100">
+                                <div class="flex justify-between items-center">
+                                    <h3 class="text-blue-900 text-lg font-semibold">
+                                        <?php echo $_SESSION['role'] === 'requestor' ? 'My Quotations' : 'All Quotations'; ?>
+                                        <span class="text-blue-600 text-sm font-normal">(<?php echo $totalQuotations; ?> total)</span>
+                                    </h3>
+                                </div>
+                            </div>
+                            <?php if (!empty($quotations)): ?>
+                            <div class="overflow-x-auto">
+                                <table class="w-full">
+                                    <thead class="bg-blue-50">
+                                        <tr>
+                                            <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Quotation #</th>
+                                            <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Customer</th>
+                                            <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Vehicle</th>
+                                            <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Problem</th>
+                                            <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Amount</th>
+                                            <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Status</th>
+                                            <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Priority</th>
+                                            <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Created</th>
+                                            <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-blue-100">
+                                        <?php foreach ($quotations as $quotation): ?>
+                                            <tr class="hover:bg-blue-50">
+                                                <td class="px-6 py-4 text-blue-900 text-sm font-medium">
+                                                    <?php echo htmlspecialchars($quotation['quotation_number']); ?>
+                                                </td>
+                                                <td class="px-6 py-4 text-blue-700 text-sm">
+                                                    <div class="font-medium"><?php echo htmlspecialchars($quotation['customer_name']); ?></div>
+                                                    <?php if ($quotation['customer_phone']): ?>
+                                                        <div class="text-blue-600 text-xs"><?php echo htmlspecialchars($quotation['customer_phone']); ?></div>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td class="px-6 py-4 text-blue-700 text-sm">
+                                                    <div class="font-medium"><?php echo htmlspecialchars($quotation['vehicle_registration']); ?></div>
+                                                    <?php if ($quotation['vehicle_make_model']): ?>
+                                                        <div class="text-blue-600 text-xs"><?php echo htmlspecialchars($quotation['vehicle_make_model']); ?></div>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td class="px-6 py-4 text-blue-600 text-sm max-w-xs">
+                                                    <div class="truncate" title="<?php echo htmlspecialchars($quotation['problem_description']); ?>">
+                                                        <?php echo htmlspecialchars(substr($quotation['problem_description'], 0, 50)) . (strlen($quotation['problem_description']) > 50 ? '...' : ''); ?>
+                                                    </div>
+                                                </td>
+                                                <td class="px-6 py-4 text-blue-700 text-sm font-medium">
+                                                    <?php echo $quotation['total_amount'] > 0 ? formatCurrency($quotation['total_amount']) : '-'; ?>
+                                                </td>
+                                                <td class="px-6 py-4">
+                                                    <?php
+                                                    $statusColors = [
+                                                        'pending' => 'bg-yellow-100 text-yellow-800',
+                                                        'sent' => 'bg-orange-100 text-orange-800',
+                                                        'approved' => 'bg-green-100 text-green-800',
+                                                        'rejected' => 'bg-red-100 text-red-800',
+                                                        'repair_in_progress' => 'bg-purple-100 text-purple-800',
+                                                        'repair_complete' => 'bg-teal-100 text-teal-800',
+                                                        'bill_generated' => 'bg-indigo-100 text-indigo-800',
+                                                        'paid' => 'bg-green-100 text-green-800',
+                                                        'cancelled' => 'bg-gray-100 text-gray-800'
+                                                    ];
+                                                    $statusColor = $statusColors[$quotation['status']] ?? 'bg-gray-100 text-gray-800';
+                                                    ?>
+                                                    <span class="inline-flex px-2 py-1 text-xs font-medium rounded-full <?php echo $statusColor; ?>">
+                                                        <?php echo ucfirst(str_replace('_', ' ', $quotation['status'])); ?>
+                                                    </span>
+                                                </td>
+                                                <td class="px-6 py-4">
+                                                    <?php
+                                                    $priorityColors = [
+                                                        'low' => 'bg-blue-100 text-blue-800',
+                                                        'medium' => 'bg-gray-100 text-gray-800',
+                                                        'high' => 'bg-orange-100 text-orange-800',
+                                                        'urgent' => 'bg-red-100 text-red-800'
+                                                    ];
+                                                    $priorityColor = $priorityColors[$quotation['priority']] ?? 'bg-gray-100 text-gray-800';
+                                                    ?>
+                                                    <span class="inline-flex px-2 py-1 text-xs font-medium rounded-full <?php echo $priorityColor; ?>">
+                                                        <?php echo ucfirst($quotation['priority']); ?>
+                                                    </span>
+                                                </td>
+                                                <td class="px-6 py-4 text-blue-600 text-sm">
+                                                    <?php echo date('M d, Y', strtotime($quotation['created_at'])); ?>
+                                                </td>
+                                                <td class="px-6 py-4">
+                                                    <div class="flex items-center gap-2">
+                                                        <button class="text-blue-600 hover:text-blue-800 p-1" onclick="viewDetails(<?php echo $quotation['id']; ?>)" title="View Details">
+                                                            <span class="material-icons text-sm">visibility</span>
+                                                        </button>
+
+                                                        <?php if ($_SESSION['role'] !== 'requestor' || ($quotation['status'] === 'pending' && $quotation['created_by'] == $_SESSION['user_id'])): ?>
+                                                            <button class="text-blue-600 hover:text-blue-800 p-1" onclick="editQuotation(<?php echo $quotation['id']; ?>)" title="Edit">
+                                                                <span class="material-icons text-sm">edit</span>
+                                                            </button>
+                                                        <?php endif; ?>
+
+                                                        <div class="relative">
+                                                            <button class="text-gray-600 hover:text-gray-800 p-1" onclick="toggleActionMenu(<?php echo $quotation['id']; ?>)" title="More Actions">
+                                                                <span class="material-icons text-sm">more_vert</span>
+                                                            </button>
+                                                            <div id="actionMenu<?php echo $quotation['id']; ?>" class="hidden absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
+                                                                <?php if ($_SESSION['role'] === 'admin'): ?>
+                                                                    <?php if ($quotation['status'] === 'pending'): ?>
+                                                                        <button class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" onclick="sendForApproval(<?php echo $quotation['id']; ?>)">
+                                                                            <span class="material-icons text-sm mr-2">send</span> Send for Approval
+                                                                        </button>
+                                                                    <?php elseif ($quotation['status'] === 'sent'): ?>
+                                                                        <button class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" onclick="approveQuotation(<?php echo $quotation['id']; ?>)">
+                                                                            <span class="material-icons text-sm mr-2">check</span> Approve
+                                                                        </button>
+                                                                        <button class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" onclick="rejectQuotation(<?php echo $quotation['id']; ?>)">
+                                                                            <span class="material-icons text-sm mr-2">close</span> Reject
+                                                                        </button>
+                                                                    <?php elseif ($quotation['status'] === 'approved'): ?>
+                                                                        <button class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" onclick="assignTechnician(<?php echo $quotation['id']; ?>)">
+                                                                            <span class="material-icons text-sm mr-2">person_add</span> Assign Technician
+                                                                        </button>
+                                                                        <button class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" onclick="startRepair(<?php echo $quotation['id']; ?>)">
+                                                                            <span class="material-icons text-sm mr-2">build</span> Start Repair
+                                                                        </button>
+                                                                    <?php elseif ($quotation['status'] === 'repair_in_progress'): ?>
+                                                                        <button class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" onclick="completeRepair(<?php echo $quotation['id']; ?>)">
+                                                                            <span class="material-icons text-sm mr-2">done</span> Complete Repair
+                                                                        </button>
+                                                                    <?php elseif ($quotation['status'] === 'repair_complete'): ?>
+                                                                        <button class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" onclick="generateBill(<?php echo $quotation['id']; ?>)">
+                                                                            <span class="material-icons text-sm mr-2">receipt</span> Generate Bill
+                                                                        </button>
+                                                                    <?php elseif ($quotation['status'] === 'bill_generated'): ?>
+                                                                        <button class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" onclick="recordPayment(<?php echo $quotation['id']; ?>)">
+                                                                            <span class="material-icons text-sm mr-2">payment</span> Record Payment
+                                                                        </button>
+                                                                    <?php endif; ?>
+                                                                <?php endif; ?>
+                                                                <button class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" onclick="viewHistory(<?php echo $quotation['id']; ?>)">
+                                                                    <span class="material-icons text-sm mr-2">history</span> History
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- Pagination -->
+                            <?php if ($pagination['total_pages'] > 1): ?>
+                                <div class="px-4 py-3 border-t border-blue-100 bg-blue-50">
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-blue-700 text-sm">
+                                            Showing <?php echo ($offset + 1); ?> to <?php echo min($offset + $limit, $totalQuotations); ?> of <?php echo $totalQuotations; ?> quotations
+                                        </span>
+                                        <div class="flex items-center gap-2">
+                                            <?php if ($page > 1): ?>
+                                                <a href="?page=<?php echo $page - 1; ?><?php echo $status_filter ? '&status=' . urlencode($status_filter) : ''; ?><?php echo $priority_filter ? '&priority=' . urlencode($priority_filter) : ''; ?><?php echo $date_from ? '&date_from=' . urlencode($date_from) : ''; ?><?php echo $date_to ? '&date_to=' . urlencode($date_to) : ''; ?><?php echo $search ? '&search=' . urlencode($search) : ''; ?>" class="px-3 py-1 text-blue-600 border border-blue-200 rounded hover:bg-blue-50">Previous</a>
+                                            <?php endif; ?>
+
+                                            <?php for ($i = max(1, $page - 2); $i <= min($pagination['total_pages'], $page + 2); $i++): ?>
+                                                <a href="?page=<?php echo $i; ?><?php echo $status_filter ? '&status=' . urlencode($status_filter) : ''; ?><?php echo $priority_filter ? '&priority=' . urlencode($priority_filter) : ''; ?><?php echo $date_from ? '&date_from=' . urlencode($date_from) : ''; ?><?php echo $date_to ? '&date_to=' . urlencode($date_to) : ''; ?><?php echo $search ? '&search=' . urlencode($search) : ''; ?>" class="px-3 py-1 <?php echo $i === $page ? 'bg-blue-600 text-white' : 'text-blue-600 border border-blue-200'; ?> rounded hover:bg-blue-50"><?php echo $i; ?></a>
+                                            <?php endfor; ?>
+
+                                            <?php if ($page < $pagination['total_pages']): ?>
+                                                <a href="?page=<?php echo $page + 1; ?><?php echo $status_filter ? '&status=' . urlencode($status_filter) : ''; ?><?php echo $priority_filter ? '&priority=' . urlencode($priority_filter) : ''; ?><?php echo $date_from ? '&date_from=' . urlencode($date_from) : ''; ?><?php echo $date_to ? '&date_to=' . urlencode($date_to) : ''; ?><?php echo $search ? '&search=' . urlencode($search) : ''; ?>" class="px-3 py-1 text-blue-600 border border-blue-200 rounded hover:bg-blue-50">Next</a>
                                             <?php endif; ?>
                                         </div>
                                     </div>
-                                    <div>
-                                        <span class="status-badge status-<?php echo $quotation['status']; ?>">
-                                            <?php echo ucfirst(str_replace('_', ' ', $quotation['status'])); ?>
-                                        </span>
-                                        <?php if ($quotation['priority'] !== 'medium'): ?>
-                                            <div style="margin-top: 4px;">
-                                                <span class="priority-badge priority-<?php echo $quotation['priority']; ?>">
-                                                    <?php echo ucfirst($quotation['priority']); ?> Priority
-                                                </span>
-                                            </div>
-                                        <?php endif; ?>
-                                    </div>
                                 </div>
+                            <?php endif; ?>
 
-                                <div class="quotation-details">
-                                    <p><strong>Problem:</strong> <?php echo nl2br(htmlspecialchars($quotation['problem_description'])); ?></p>
-                                    <?php if ($quotation['work_description']): ?>
-                                        <p><strong>Work Description:</strong> <?php echo nl2br(htmlspecialchars($quotation['work_description'])); ?></p>
-                                    <?php endif; ?>
-                                    <?php if ($quotation['total_amount'] > 0): ?>
-                                        <p><strong>Amount:</strong> <?php echo formatCurrency($quotation['total_amount']); ?></p>
-                                    <?php endif; ?>
-
-                                    <div style="display: flex; justify-content: space-between; margin-top: 12px; font-size: 12px; color: #666;">
-                                        <span>Created: <?php echo formatDate($quotation['created_at']); ?></span>
-                                        <?php if ($quotation['assigned_to_name']): ?>
-                                            <span>Assigned to: <?php echo htmlspecialchars($quotation['assigned_to_name']); ?></span>
+                            <?php else: ?>
+                                <div class="text-center py-12">
+                                    <span class="material-icons text-blue-300 text-6xl mb-4">receipt_long</span>
+                                    <h3 class="text-blue-900 text-lg font-medium mb-2">No quotations found</h3>
+                                    <p class="text-blue-600 text-sm mb-4">
+                                        <?php if ($_SESSION['role'] === 'requestor'): ?>
+                                            Create your first quotation to get started.
+                                        <?php else: ?>
+                                            Quotations will appear here when they are created.
                                         <?php endif; ?>
-                                        <?php if ($quotation['approved_by_name']): ?>
-                                            <span>Approved by: <?php echo htmlspecialchars($quotation['approved_by_name']); ?></span>
-                                        <?php endif; ?>
-                                    </div>
-                                </div>
-
-                                <div class="quotation-actions">
-                                    <button class="btn-sm btn-info" onclick="viewDetails(<?php echo $quotation['id']; ?>)">
-                                        <i class="material-icons">visibility</i> View Details
-                                    </button>
-
-                                    <?php if ($_SESSION['role'] !== 'requestor' || ($quotation['status'] === 'pending' && $quotation['created_by'] == $_SESSION['user_id'])): ?>
-                                        <button class="btn-sm btn-primary" onclick="editQuotation(<?php echo $quotation['id']; ?>)">
-                                            <i class="material-icons">edit</i> Edit
+                                    </p>
+                                    <?php if ($_SESSION['role'] === 'requestor'): ?>
+                                        <button class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium" onclick="showCreateModal()">
+                                            Create Quotation
                                         </button>
                                     <?php endif; ?>
-
-                                    <?php if ($_SESSION['role'] === 'admin'): ?>
-                                        <?php if ($quotation['status'] === 'pending'): ?>
-                                            <button class="btn-sm btn-success" onclick="sendForApproval(<?php echo $quotation['id']; ?>)">
-                                                <i class="material-icons">send</i> Send Quote
-                                            </button>
-                                        <?php elseif ($quotation['status'] === 'sent'): ?>
-                                            <button class="btn-sm btn-success" onclick="approveQuotation(<?php echo $quotation['id']; ?>)">
-                                                <i class="material-icons">check</i> Approve
-                                            </button>
-                                            <button class="btn-sm btn-danger" onclick="rejectQuotation(<?php echo $quotation['id']; ?>)">
-                                                <i class="material-icons">close</i> Reject
-                                            </button>
-                                        <?php elseif ($quotation['status'] === 'approved'): ?>
-                                            <button class="btn-sm btn-warning" onclick="assignTechnician(<?php echo $quotation['id']; ?>)">
-                                                <i class="material-icons">person_add</i> Assign
-                                            </button>
-                                            <button class="btn-sm btn-info" onclick="startRepair(<?php echo $quotation['id']; ?>)">
-                                                <i class="material-icons">build</i> Start Repair
-                                            </button>
-                                        <?php elseif ($quotation['status'] === 'repair_in_progress'): ?>
-                                            <button class="btn-sm btn-success" onclick="completeRepair(<?php echo $quotation['id']; ?>)">
-                                                <i class="material-icons">done</i> Complete Repair
-                                            </button>
-                                        <?php elseif ($quotation['status'] === 'repair_complete'): ?>
-                                            <button class="btn-sm btn-warning" onclick="generateBill(<?php echo $quotation['id']; ?>)">
-                                                <i class="material-icons">receipt</i> Generate Bill
-                                            </button>
-                                        <?php elseif ($quotation['status'] === 'bill_generated'): ?>
-                                            <button class="btn-sm btn-success" onclick="recordPayment(<?php echo $quotation['id']; ?>)">
-                                                <i class="material-icons">payment</i> Record Payment
-                                            </button>
-                                        <?php endif; ?>
-                                    <?php endif; ?>
-
-                                    <button class="btn-sm btn-secondary" onclick="viewHistory(<?php echo $quotation['id']; ?>)">
-                                        <i class="material-icons">history</i> History
-                                    </button>
                                 </div>
-                            </div>
-                        <?php endforeach; ?>
-
-                        <?php if (empty($quotations)): ?>
-                            <div style="text-align: center; padding: 60px 20px; color: #666;">
-                                <i class="material-icons" style="font-size: 64px; margin-bottom: 20px;">assignment</i>
-                                <h3>No quotations found</h3>
-                                <p>
-                                    <?php if ($_SESSION['role'] === 'requestor'): ?>
-                                        Create your first quotation request to get started.
-                                    <?php else: ?>
-                                        Quotation requests will appear here when customers submit them.
-                                    <?php endif; ?>
-                                </p>
-                            </div>
-                        <?php endif; ?>
-                    </div>
-                </div>
-
-                <!-- Recent Activity Sidebar -->
-                <div class="activity-sidebar">
-                    <h3>Recent Activity</h3>
-                    <div class="activity-timeline">
-                        <?php foreach ($recent_activity as $activity): ?>
-                            <div class="timeline-item">
-                                <div style="font-size: 12px; color: #666; margin-bottom: 4px;">
-                                    <?php echo formatDate($activity['created_at'], 'd/m/Y H:i'); ?>
-                                </div>
-                                <div style="font-weight: 500; margin-bottom: 2px;">
-                                    <?php echo htmlspecialchars($activity['user_name']); ?>
-                                </div>
-                                <div style="font-size: 14px;">
-                                    <?php echo htmlspecialchars($activity['description']); ?>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
+                            <?php endif; ?>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -471,90 +485,209 @@ if ($_SESSION['role'] === 'admin') {
     <!-- Modals will be loaded here dynamically -->
     <div id="modal-container"></div>
 
-    <script src="../assets/js/quotation-manager.js"></script>
+    <script src="../assets/js/material.js"></script>
+    <script src="../assets/js/main.js"></script>
     <script>
         // Initialize page
         document.addEventListener('DOMContentLoaded', function() {
             console.log('Quotation Manager initialized');
-        });
 
-        function filterQuotations() {
-            const statusFilter = document.getElementById('statusFilter').value.toLowerCase();
-            const searchFilter = document.getElementById('searchFilter').value.toLowerCase();
-            const cards = document.querySelectorAll('.quotation-card');
-
-            cards.forEach(card => {
-                const status = card.getAttribute('data-status');
-                const searchText = card.getAttribute('data-search');
-
-                const statusMatch = !statusFilter || status === statusFilter;
-                const searchMatch = !searchFilter || searchText.includes(searchFilter);
-
-                if (statusMatch && searchMatch) {
-                    card.style.display = 'block';
-                } else {
-                    card.style.display = 'none';
+            // Close action menus when clicking outside
+            document.addEventListener('click', function(event) {
+                if (!event.target.closest('[id^="actionMenu"]') && !event.target.closest('button[onclick*="toggleActionMenu"]')) {
+                    document.querySelectorAll('[id^="actionMenu"]').forEach(menu => {
+                        menu.classList.add('hidden');
+                    });
                 }
             });
+        });
+
+        // Toggle action menu for quotations
+        function toggleActionMenu(quotationId) {
+            const menu = document.getElementById('actionMenu' + quotationId);
+            const allMenus = document.querySelectorAll('[id^="actionMenu"]');
+
+            // Close all other menus
+            allMenus.forEach(m => {
+                if (m !== menu) {
+                    m.classList.add('hidden');
+                }
+            });
+
+            // Toggle current menu
+            menu.classList.toggle('hidden');
         }
 
-        function clearFilters() {
-            document.getElementById('statusFilter').value = '';
-            document.getElementById('searchFilter').value = '';
-            filterQuotations();
+        // Modal and action functions
+        async function showCreateModal() {
+            // Implementation for create quotation modal
+            alert('Create quotation modal will be implemented');
         }
 
-        function refreshQuotations() {
-            window.location.reload();
+        async function viewDetails(id) {
+            // Implementation for view quotation details modal
+            alert('View details modal for quotation ' + id + ' will be implemented');
         }
 
-        // Placeholder functions for modal actions (to be implemented)
-        function showCreateModal() {
-            console.log('Create modal');
+        async function editQuotation(id) {
+            // Implementation for edit quotation modal
+            alert('Edit quotation modal for quotation ' + id + ' will be implemented');
         }
 
-        function viewDetails(id) {
-            console.log('View details for quotation:', id);
+        async function viewHistory(id) {
+            try {
+                const response = await fetch('../api/quotations_new.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        action: 'get_history',
+                        quotation_id: id,
+                        csrf_token: '<?php echo generateCSRFToken(); ?>'
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    // Show history modal with result.history and result.status_log
+                    alert('History modal will show history for quotation ' + id);
+                } else {
+                    alert(result.error || 'Failed to load quotation history');
+                }
+            } catch (error) {
+                console.error('Error loading history:', error);
+                alert('Network error occurred while loading history');
+            }
         }
 
-        function editQuotation(id) {
-            console.log('Edit quotation:', id);
+        async function sendForApproval(id) {
+            if (confirm('Send this quotation for approval?')) {
+                await updateQuotationStatus(id, 'sent', 'Sent for approval');
+            }
         }
 
-        function viewHistory(id) {
-            console.log('View history for quotation:', id);
+        async function approveQuotation(id) {
+            const notes = prompt('Approval notes (optional):');
+            if (notes !== null) {
+                try {
+                    const response = await fetch('../api/quotations_new.php', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: new URLSearchParams({
+                            action: 'approve',
+                            quotation_id: id,
+                            approval_notes: notes,
+                            csrf_token: '<?php echo generateCSRFToken(); ?>'
+                        })
+                    });
+
+                    const result = await response.json();
+                    if (result.success) {
+                        alert('Quotation approved successfully');
+                        window.location.reload();
+                    } else {
+                        alert(result.error || 'Failed to approve quotation');
+                    }
+                } catch (error) {
+                    console.error('Error approving quotation:', error);
+                    alert('Network error occurred');
+                }
+            }
         }
 
-        function sendForApproval(id) {
-            console.log('Send for approval:', id);
+        async function rejectQuotation(id) {
+            const reason = prompt('Rejection reason (required):');
+            if (reason && reason.trim()) {
+                try {
+                    const response = await fetch('../api/quotations_new.php', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: new URLSearchParams({
+                            action: 'reject',
+                            quotation_id: id,
+                            rejection_reason: reason.trim(),
+                            csrf_token: '<?php echo generateCSRFToken(); ?>'
+                        })
+                    });
+
+                    const result = await response.json();
+                    if (result.success) {
+                        alert('Quotation rejected successfully');
+                        window.location.reload();
+                    } else {
+                        alert(result.error || 'Failed to reject quotation');
+                    }
+                } catch (error) {
+                    console.error('Error rejecting quotation:', error);
+                    alert('Network error occurred');
+                }
+            } else if (reason === '') {
+                alert('Rejection reason is required');
+            }
         }
 
-        function approveQuotation(id) {
-            console.log('Approve quotation:', id);
+        async function assignTechnician(id) {
+            // Implementation for technician assignment modal
+            alert('Technician assignment modal for quotation ' + id + ' will be implemented');
         }
 
-        function rejectQuotation(id) {
-            console.log('Reject quotation:', id);
+        async function startRepair(id) {
+            if (confirm('Start repair work for this quotation?')) {
+                await updateQuotationStatus(id, 'repair_in_progress', 'Repair work started');
+            }
         }
 
-        function assignTechnician(id) {
-            console.log('Assign technician:', id);
+        async function completeRepair(id) {
+            if (confirm('Mark repair work as complete?')) {
+                await updateQuotationStatus(id, 'repair_complete', 'Repair work completed');
+            }
         }
 
-        function startRepair(id) {
-            console.log('Start repair:', id);
+        async function generateBill(id) {
+            if (confirm('Generate bill for this quotation?')) {
+                await updateQuotationStatus(id, 'bill_generated', 'Bill generated');
+            }
         }
 
-        function completeRepair(id) {
-            console.log('Complete repair:', id);
+        async function recordPayment(id) {
+            if (confirm('Record payment as received for this quotation?')) {
+                await updateQuotationStatus(id, 'paid', 'Payment recorded');
+            }
         }
 
-        function generateBill(id) {
-            console.log('Generate bill:', id);
-        }
+        // Helper function for status updates
+        async function updateQuotationStatus(id, status, notes) {
+            try {
+                const response = await fetch('../api/quotations_new.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        action: 'update_status',
+                        quotation_id: id,
+                        status: status,
+                        notes: notes,
+                        csrf_token: '<?php echo generateCSRFToken(); ?>'
+                    })
+                });
 
-        function recordPayment(id) {
-            console.log('Record payment:', id);
+                const result = await response.json();
+                if (result.success) {
+                    alert('Status updated successfully');
+                    window.location.reload();
+                } else {
+                    alert(result.error || 'Failed to update status');
+                }
+            } catch (error) {
+                console.error('Error updating status:', error);
+                alert('Network error occurred');
+            }
         }
     </script>
 </body>

@@ -20,14 +20,13 @@ $isStandalone = ($action === 'standalone');
 
 // If creating quotation for specific service request
 if ($action === 'create' && $request_id > 0) {
-    // Get service request details
+    // Get quotation details
     $serviceRequest = $db->fetch(
-        "SELECT sr.*, v.registration_number, u.full_name as requestor_name, u.email as requestor_email,
-                u.organization_id
-         FROM service_requests sr
-         JOIN vehicles v ON sr.vehicle_id = v.id
-         JOIN users u ON sr.user_id = u.id
-         WHERE sr.id = ? AND sr.status = 'pending'",
+        "SELECT q.*, u.full_name as requestor_name, u.email as requestor_email,
+                q.organization_id
+         FROM quotations_new q
+         JOIN users_new u ON q.created_by = u.id
+         WHERE q.id = ? AND q.status = 'pending'",
         [$request_id]
     );
 
@@ -37,35 +36,30 @@ if ($action === 'create' && $request_id > 0) {
     }
 
     // Organization filtering
-    if ($_SESSION['organization_id'] != 2 && $serviceRequest['organization_id'] != $_SESSION['organization_id']) {
+    if ($_SESSION['organization_id'] != 15 && $serviceRequest['organization_id'] != $_SESSION['organization_id']) {
         header('Location: quotation_creator.php?error=access_denied');
         exit;
     }
 
-    // Check if quotation already exists
-    $existingQuotation = $db->fetch(
-        "SELECT id FROM quotations WHERE request_id = ?",
-        [$request_id]
-    );
-
-    if ($existingQuotation) {
+    // Check if quotation already has pricing
+    if ($serviceRequest['total_amount'] > 0) {
         header('Location: quotation_creator.php?error=quotation_exists');
         exit;
     }
 } elseif ($isStandalone) {
-    // Generate standalone request ID for direct quotations
+    // Generate standalone quotation ID for direct quotations
     $currentYear = date('Y');
 
-    // Get or create sequence for current year
+    // Get or create sequence for current year using direct_quotation_sequence
     $sequence = $db->fetch(
-        "SELECT last_number FROM standalone_request_sequence WHERE year = ?",
+        "SELECT last_number FROM direct_quotation_sequence WHERE year = ?",
         [$currentYear]
     );
 
     if (!$sequence) {
         // Create new sequence for the year
         $db->query(
-            "INSERT INTO standalone_request_sequence (year, last_number) VALUES (?, 1)",
+            "INSERT INTO direct_quotation_sequence (year, last_number) VALUES (?, 1)",
             [$currentYear]
         );
         $nextNumber = 1;
@@ -73,44 +67,43 @@ if ($action === 'create' && $request_id > 0) {
         $nextNumber = $sequence['last_number'] + 1;
         // Update sequence
         $db->query(
-            "UPDATE standalone_request_sequence SET last_number = ? WHERE year = ?",
+            "UPDATE direct_quotation_sequence SET last_number = ? WHERE year = ?",
             [$nextNumber, $currentYear]
         );
     }
 
-    // Generate the standalone request ID
-    $standaloneRequestId = 'WALK-' . $currentYear . '-' . str_pad($nextNumber, 4, '0', STR_PAD_LEFT);
+    // Generate the standalone quotation ID
+    $standaloneRequestId = 'D-' . $currentYear . '-' . str_pad($nextNumber, 4, '0', STR_PAD_LEFT);
 } else {
-    // Get pending service requests for quotation creation
-    $conditions = ["sr.status = 'pending'"];
+    // Get pending quotations for pricing
+    $conditions = ["q.status = 'pending'"];
     $params = [];
 
     // Organization filtering
-    if ($_SESSION['organization_id'] != 2) {
-        $conditions[] = "u.organization_id = ?";
+    if ($_SESSION['organization_id'] != 15) {
+        $conditions[] = "q.organization_id = ?";
         $params[] = $_SESSION['organization_id'];
     }
+
+    // Only show quotations that don't have pricing yet
+    $conditions[] = "q.total_amount = 0";
 
     $whereClause = implode(' AND ', $conditions);
 
     $pendingRequests = $db->fetchAll(
-        "SELECT sr.*, v.registration_number, u.full_name as requestor_name
-         FROM service_requests sr
-         JOIN vehicles v ON sr.vehicle_id = v.id
-         JOIN users u ON sr.user_id = u.id
-         LEFT JOIN quotations q ON sr.id = q.request_id
-         WHERE {$whereClause} AND q.id IS NULL
-         ORDER BY sr.created_at DESC",
+        "SELECT q.*, u.full_name as requestor_name
+         FROM quotations_new q
+         JOIN users_new u ON q.created_by = u.id
+         WHERE {$whereClause}
+         ORDER BY q.created_at DESC",
         $params
     );
 
     // Get recent quotations for management
     $recentQuotations = $db->fetchAll(
-        "SELECT q.*, sr.problem_description, v.registration_number, u.full_name as requestor_name, u.email as requestor_email
-         FROM quotations q
-         JOIN service_requests sr ON q.request_id = sr.id
-         JOIN vehicles v ON sr.vehicle_id = v.id
-         JOIN users u ON sr.user_id = u.id
+        "SELECT q.*, u.full_name as requestor_name, u.email as requestor_email
+         FROM quotations_new q
+         JOIN users_new u ON q.created_by = u.id
          WHERE {$whereClause}
          ORDER BY q.created_at DESC
          LIMIT 10",
@@ -129,8 +122,8 @@ include '../includes/admin_head.php';
                     <div id="mainContent" class="p-6">
                         <?php
                         // Check if database needs updating
-                        $columns = $db->fetchAll("DESCRIBE quotations");
-                        $columnNames = array_column($columns, 'Field');
+                        $columns = $db->fetchAll("DESCRIBE quotations_new");
+                        $columnNames = $columns ? array_column($columns, 'Field') : [];
                         $needsDbUpdate = !in_array('quotation_number', $columnNames);
 
                         if ($needsDbUpdate): ?>
@@ -159,17 +152,17 @@ include '../includes/admin_head.php';
                                 </div>
                                 <div class="p-6">
                                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        <!-- Service Request Quotation -->
+                                        <!-- Pending Quotations -->
                                         <div class="border-2 border-blue-100 rounded-lg p-6 hover:border-blue-300 hover:bg-blue-50 transition-colors">
                                             <div class="text-center">
                                                 <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                                    <span class="material-icons text-blue-600 text-2xl">assignment</span>
+                                                    <span class="material-icons text-blue-600 text-2xl">pending_actions</span>
                                                 </div>
-                                                <h3 class="text-blue-900 text-lg font-semibold mb-2">Service Request</h3>
-                                                <p class="text-blue-600 text-sm mb-4">Create quotation for an existing service request from a registered user</p>
+                                                <h3 class="text-blue-900 text-lg font-semibold mb-2">Pending Quotations</h3>
+                                                <p class="text-blue-600 text-sm mb-4">Add pricing to quotations created by requestors</p>
                                                 <a href="quotation_creator.php?action=list" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium inline-flex items-center gap-2">
                                                     <span class="material-icons text-sm">search</span>
-                                                    Browse Requests
+                                                    Browse Quotations
                                                 </a>
                                             </div>
                                         </div>
@@ -206,8 +199,8 @@ include '../includes/admin_head.php';
                                     <h3 class="text-blue-900 text-md font-semibold mb-4">Customer Information</h3>
                                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                                         <div>
-                                            <p class="text-blue-700 text-sm"><strong>Request ID:</strong> <?php echo $standaloneRequestId; ?></p>
-                                            <p class="text-blue-700 text-sm"><strong>Request Date:</strong> <?php echo date('M d, Y'); ?></p>
+                                            <p class="text-blue-700 text-sm"><strong>Quotation ID:</strong> <?php echo $standaloneRequestId; ?></p>
+                                            <p class="text-blue-700 text-sm"><strong>Quotation Date:</strong> <?php echo date('M d, Y'); ?></p>
                                         </div>
                                         <div>
                                             <p class="text-blue-600 text-sm"><em>Walk-in Customer / Direct Quotation</em></p>
@@ -217,8 +210,8 @@ include '../includes/admin_head.php';
                                     <!-- Editable Customer Fields -->
                                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div>
-                                            <label for="vehicleRegistration" class="block text-blue-700 text-sm font-medium mb-2">Vehicle Registration Number</label>
-                                            <input type="text" id="vehicleRegistration" name="vehicle_registration" required class="w-full px-3 py-2 border border-blue-200 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-blue-900">
+                                            <label for="vehicleRegistration" class="block text-blue-700 text-sm font-medium mb-2">Vehicle Registration Number (Optional)</label>
+                                            <input type="text" id="vehicleRegistration" name="vehicle_registration" class="w-full px-3 py-2 border border-blue-200 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-blue-900">
                                         </div>
                                         <div>
                                             <label for="customerName" class="block text-blue-700 text-sm font-medium mb-2">Customer Name</label>
@@ -227,6 +220,10 @@ include '../includes/admin_head.php';
                                         <div>
                                             <label for="customerEmail" class="block text-blue-700 text-sm font-medium mb-2">Customer Email (Optional)</label>
                                             <input type="email" id="customerEmail" name="customer_email" class="w-full px-3 py-2 border border-blue-200 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-blue-900">
+                                        </div>
+                                        <div>
+                                            <label for="customerPhone" class="block text-blue-700 text-sm font-medium mb-2">Customer Phone (Optional)</label>
+                                            <input type="text" id="customerPhone" name="customer_phone" class="w-full px-3 py-2 border border-blue-200 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-blue-900">
                                         </div>
                                         <div>
                                             <label for="problemDescription" class="block text-blue-700 text-sm font-medium mb-2">Problem Description</label>
@@ -245,6 +242,7 @@ include '../includes/admin_head.php';
                                     <input type="hidden" name="vehicle_registration" id="hiddenVehicleRegistration">
                                     <input type="hidden" name="customer_name" id="hiddenCustomerName">
                                     <input type="hidden" name="customer_email" id="hiddenCustomerEmail">
+                                    <input type="hidden" name="customer_phone" id="hiddenCustomerPhone">
                                     <input type="hidden" name="problem_description" id="hiddenProblemDescription">
 
                                     <div class="p-6 space-y-6">
@@ -484,8 +482,8 @@ include '../includes/admin_head.php';
                             <!-- Service Requests List -->
                             <div class="bg-white rounded-lg border border-blue-100 shadow-sm">
                                 <div class="p-4 border-b border-blue-100">
-                                    <h2 class="text-blue-900 text-lg font-semibold">Pending Service Requests</h2>
-                                    <p class="text-blue-600 text-sm mt-1">Select a service request to create a quotation</p>
+                                    <h2 class="text-blue-900 text-lg font-semibold">Pending Quotations</h2>
+                                    <p class="text-blue-600 text-sm mt-1">Select a quotation to add pricing details</p>
                                 </div>
 
                                 <?php if (!empty($pendingRequests)): ?>
@@ -493,9 +491,9 @@ include '../includes/admin_head.php';
                                         <table class="w-full">
                                             <thead class="bg-blue-50">
                                                 <tr>
-                                                    <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Request ID</th>
+                                                    <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Quotation ID</th>
                                                     <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Vehicle</th>
-                                                    <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Requestor</th>
+                                                    <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Customer</th>
                                                     <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Problem</th>
                                                     <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Date</th>
                                                     <th class="px-6 py-3 text-left text-blue-900 text-sm font-semibold">Actions</th>
@@ -505,7 +503,7 @@ include '../includes/admin_head.php';
                                                 <?php foreach ($pendingRequests as $request): ?>
                                                     <tr class="hover:bg-blue-50">
                                                         <td class="px-6 py-4 text-blue-900 text-sm font-medium">#<?php echo $request['id']; ?></td>
-                                                        <td class="px-6 py-4 text-blue-700 text-sm"><?php echo htmlspecialchars($request['registration_number']); ?></td>
+                                                        <td class="px-6 py-4 text-blue-700 text-sm"><?php echo htmlspecialchars($request['vehicle_registration']); ?></td>
                                                         <td class="px-6 py-4 text-blue-700 text-sm"><?php echo htmlspecialchars($request['requestor_name']); ?></td>
                                                         <td class="px-6 py-4 text-blue-600 text-sm max-w-xs truncate"><?php echo htmlspecialchars(substr($request['problem_description'], 0, 60)); ?>...</td>
                                                         <td class="px-6 py-4 text-blue-600 text-sm"><?php echo date('M d, Y', strtotime($request['created_at'])); ?></td>
@@ -525,7 +523,7 @@ include '../includes/admin_head.php';
                                         <div class="flex flex-col items-center gap-2">
                                             <span class="material-icons text-4xl text-gray-300">assignment</span>
                                             <p>No pending service requests found</p>
-                                            <p class="text-sm text-gray-400">All service requests have quotations or are completed</p>
+                                            <p class="text-sm text-gray-400">All quotations have been priced or are completed</p>
                                         </div>
                                     </div>
                                 <?php endif; ?>
@@ -555,7 +553,7 @@ include '../includes/admin_head.php';
                                                 <?php foreach ($recentQuotations as $quotation): ?>
                                                     <tr class="hover:bg-blue-50">
                                                         <td class="px-6 py-4 text-blue-900 text-sm font-medium"><?php echo htmlspecialchars($quotation['quotation_number']); ?></td>
-                                                        <td class="px-6 py-4 text-blue-700 text-sm"><?php echo htmlspecialchars($quotation['registration_number']); ?></td>
+                                                        <td class="px-6 py-4 text-blue-700 text-sm"><?php echo htmlspecialchars($quotation['vehicle_registration']); ?></td>
                                                         <td class="px-6 py-4 text-blue-700 text-sm"><?php echo htmlspecialchars($quotation['requestor_name']); ?></td>
                                                         <td class="px-6 py-4 text-blue-900 text-sm font-medium">₹<?php echo number_format($quotation['total_amount'], 2); ?></td>
                                                         <td class="px-6 py-4 text-blue-600 text-sm"><?php echo date('M d, Y', strtotime($quotation['created_at'])); ?></td>
@@ -780,18 +778,18 @@ include '../includes/admin_head.php';
                     .then(response => response.json())
                     .then(data => {
                         if (data.success) {
-                            Material.showSnackbar(data.message, 'success');
+                            showNotification(data.message, 'success');
                             setTimeout(() => {
                                 window.location.reload();
                             }, 2000);
                         } else {
-                            Material.showSnackbar(data.error || 'Update failed', 'error');
+                            showNotification(data.error || 'Update failed', 'error');
                             this.textContent = 'Click here to update now';
                             this.disabled = false;
                         }
                     })
                     .catch(error => {
-                        Material.showSnackbar('Update failed: ' + error.message, 'error');
+                        showNotification('Update failed: ' + error.message, 'error');
                         this.textContent = 'Click here to update now';
                         this.disabled = false;
                     });
@@ -803,7 +801,56 @@ include '../includes/admin_head.php';
         function sendToRequestor(quotationId, requestorEmail) {
             document.getElementById('send_quotation_id').value = quotationId;
             document.getElementById('send_requestor_email').textContent = 'Sending to: ' + requestorEmail;
-            Material.openModal('sendToRequestorModal');
+            document.getElementById('sendToRequestorModal').style.display = 'flex';
+        }
+
+        // Simple notification function
+        function showNotification(message, type = 'info') {
+            // Create notification element
+            const notification = document.createElement('div');
+            notification.className = `fixed top-4 right-4 z-[9999] px-6 py-4 rounded-lg shadow-xl max-w-sm text-white transform transition-all duration-300 translate-x-full ${
+                type === 'error' ? 'bg-red-600 border-l-4 border-red-800' :
+                type === 'success' ? 'bg-green-600 border-l-4 border-green-800' :
+                'bg-blue-600 border-l-4 border-blue-800'
+            }`;
+            notification.innerHTML = `
+                <div class="flex items-center gap-3">
+                    <span class="material-icons text-lg">${
+                        type === 'error' ? 'error' :
+                        type === 'success' ? 'check_circle' :
+                        'info'
+                    }</span>
+                    <p class="text-sm font-medium">${message}</p>
+                    <button onclick="this.parentElement.parentElement.remove()" class="ml-2 text-white hover:text-gray-200">
+                        <span class="material-icons text-lg">close</span>
+                    </button>
+                </div>
+            `;
+
+            // Add to page
+            document.body.appendChild(notification);
+
+            // Trigger animation
+            setTimeout(() => {
+                notification.classList.remove('translate-x-full');
+            }, 10);
+
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                if (notification && notification.parentNode) {
+                    notification.classList.add('translate-x-full');
+                    setTimeout(() => {
+                        if (notification && notification.parentNode) {
+                            notification.parentNode.removeChild(notification);
+                        }
+                    }, 300);
+                }
+            }, 5000);
+
+            // Also try Material fallback if available
+            if (typeof Material !== 'undefined' && Material.showSnackbar) {
+                Material.showSnackbar(message, type);
+            }
         }
 
         // Modal handling
@@ -830,20 +877,22 @@ include '../includes/admin_head.php';
             const vehicleReg = document.getElementById('vehicleRegistration');
             const customerName = document.getElementById('customerName');
             const customerEmail = document.getElementById('customerEmail');
+            const customerPhone = document.getElementById('customerPhone');
             const problemDesc = document.getElementById('problemDescription');
 
             // Check if elements exist (only in standalone mode)
-            if (vehicleReg && customerName && customerEmail && problemDesc) {
+            if (vehicleReg && customerName && customerEmail && customerPhone && problemDesc) {
                 document.getElementById('hiddenVehicleRegistration').value = vehicleReg.value;
                 document.getElementById('hiddenCustomerName').value = customerName.value;
                 document.getElementById('hiddenCustomerEmail').value = customerEmail.value;
+                document.getElementById('hiddenCustomerPhone').value = customerPhone.value;
                 document.getElementById('hiddenProblemDescription').value = problemDesc.value;
             }
         }
 
         // Add event listeners to sync fields when they change
         document.addEventListener('DOMContentLoaded', function() {
-            const fieldsToSync = ['vehicleRegistration', 'customerName', 'customerEmail', 'problemDescription'];
+            const fieldsToSync = ['vehicleRegistration', 'customerName', 'customerEmail', 'customerPhone', 'problemDescription'];
 
             fieldsToSync.forEach(fieldId => {
                 const field = document.getElementById(fieldId);
@@ -858,6 +907,15 @@ include '../includes/admin_head.php';
             if (quotationForm) {
                 quotationForm.addEventListener('submit', function(e) {
                     syncCustomerFields();
+                });
+            }
+
+            // Add phone number validation (numbers only)
+            const phoneField = document.getElementById('customerPhone');
+            if (phoneField) {
+                phoneField.addEventListener('input', function(e) {
+                    // Remove any non-digit characters except +, -, space, and parentheses
+                    e.target.value = e.target.value.replace(/[^0-9+\-\s()]/g, '');
                 });
             }
         });
@@ -938,29 +996,36 @@ include '../includes/admin_head.php';
         function validateQuotationForm(isStandalone = false) {
             let errors = [];
 
-            // Check base service charge
+            // Always required fields - check in logical order
+            const customerName = document.getElementById('customerName');
+            const problemDesc = document.getElementById('problemDescription');
+
+            // 1. Customer name first
+            if (!customerName || !customerName.value.trim()) {
+                errors.push('Customer name is required');
+            }
+
+            // 2. Problem description second
+            if (!problemDesc || !problemDesc.value.trim()) {
+                errors.push('Problem description is required');
+            }
+
+            // 3. Vehicle registration (only for regular quotations)
+            if (!isStandalone) {
+                const vehicleReg = document.getElementById('vehicleRegistration');
+                if (!vehicleReg || !vehicleReg.value.trim()) {
+                    errors.push('Vehicle registration is required');
+                }
+            }
+
+            // 4. Base service charge last (financial validation)
             const baseCharge = document.getElementById('baseServiceCharge');
             if (!baseCharge || !baseCharge.value || parseFloat(baseCharge.value) <= 0) {
                 errors.push('Base service charge is required and must be greater than zero');
             }
 
-
-            // For standalone quotations, check additional fields
-            if (isStandalone) {
-                const vehicleReg = document.getElementById('vehicleRegistration');
-                const customerName = document.getElementById('customerName');
-                const problemDesc = document.getElementById('problemDescription');
-
-                if (!vehicleReg || !vehicleReg.value.trim()) {
-                    errors.push('Vehicle registration number is required');
-                }
-                if (!customerName || !customerName.value.trim()) {
-                    errors.push('Customer name is required');
-                }
-                if (!problemDesc || !problemDesc.value.trim()) {
-                    errors.push('Problem description is required');
-                }
-            }
+            // For standalone quotations, vehicle registration and email are optional
+            // (walk-in customers may not have these details)
 
             return errors;
         }
@@ -969,7 +1034,7 @@ include '../includes/admin_head.php';
             // Validate form first
             const errors = validateQuotationForm(isStandalone);
             if (errors.length > 0) {
-                Material.showSnackbar(errors[0], 'error');
+                showNotification(errors[0], 'error');
                 return;
             }
 
@@ -1019,8 +1084,15 @@ include '../includes/admin_head.php';
                 if (response.ok) {
                     return response.text();
                 } else {
-                    return response.json().then(data => {
-                        throw new Error(data.error || 'Failed to generate preview');
+                    // Handle error responses
+                    return response.text().then(text => {
+                        try {
+                            const data = JSON.parse(text);
+                            throw new Error(data.error || 'Failed to generate preview');
+                        } catch (jsonError) {
+                            // If response is not JSON, show raw text
+                            throw new Error(`Server error (${response.status}): ${text.substring(0, 200)}...`);
+                        }
                     });
                 }
             })
@@ -1052,7 +1124,7 @@ include '../includes/admin_head.php';
                         </div>
                     </div>
                 `;
-                Material.showSnackbar('Failed to generate preview: ' + error.message, 'error');
+                showNotification('Failed to generate preview: ' + error.message, 'error');
             });
         }
 

@@ -1,69 +1,92 @@
 <?php
+// Start output buffering to prevent any unwanted output
+ob_start();
+
 require_once '../includes/functions.php';
 
 requireRole('admin');
 
+// Clear any previous output and set JSON header
+ob_clean();
 header('Content-Type: application/json');
 
+// Use new database tables (users_new, organizations_new)
+$useNewTables = true;
 
-if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    $action = $_GET['action'] ?? '';
-    if ($action === 'get') {
-        getUser();
+try {
+    if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+        $action = $_GET['action'] ?? '';
+        if ($action === 'get') {
+            getUser();
+            exit;
+        }
+    } else if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['error' => 'Method not allowed']);
         exit;
     }
-} else if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    http_response_code(405);
-    echo json_encode(['error' => 'Method not allowed']);
-    exit;
-}
 
-$action = $_POST['action'] ?? '';
+    $action = $_POST['action'] ?? '';
 
-switch ($action) {
-    case 'create':
-        createUser();
-        break;
-    case 'update':
-        updateUser();
-        break;
-    case 'delete':
-        deleteUser();
-        break;
-    case 'toggle_status':
-        toggleUserStatus();
-        break;
-    default:
-        http_response_code(400);
-        echo json_encode(['error' => 'Invalid action']);
+    switch ($action) {
+        case 'create':
+            createUser();
+            break;
+        case 'update':
+            updateUser();
+            break;
+        case 'delete':
+            deleteUser();
+            break;
+        case 'toggle_status':
+            toggleUserStatus();
+            break;
+        default:
+            http_response_code(400);
+            echo json_encode(['error' => 'Invalid action']);
+    }
+} catch (Exception $e) {
+    http_response_code(500);
+    error_log("API Fatal Error: " . $e->getMessage());
+    echo json_encode(['error' => 'Internal server error', 'debug' => $e->getMessage()]);
 }
 
 function getUser() {
     global $db;
 
     $user_id = (int)($_GET['id'] ?? 0);
+    error_log("API: Getting user with ID: " . $user_id);
 
     if ($user_id <= 0) {
         http_response_code(400);
+        error_log("API Error: Invalid user ID provided: " . $user_id);
         echo json_encode(['error' => 'Invalid user ID']);
         return;
     }
 
-    $user = $db->fetch(
-        "SELECT id, username, email, full_name, role, organization_id, is_active, created_at FROM users_new WHERE id = ?",
-        [$user_id]
-    );
+    try {
+        $user = $db->fetch(
+            "SELECT id, username, email, full_name, role, organization_id, is_active, created_at FROM users_new WHERE id = ?",
+            [$user_id]
+        );
 
-    if (!$user) {
-        http_response_code(404);
-        echo json_encode(['error' => 'User not found']);
-        return;
+        if (!$user) {
+            http_response_code(404);
+            error_log("API Error: User not found with ID: " . $user_id);
+            echo json_encode(['error' => 'User not found']);
+            return;
+        }
+
+        error_log("API Success: User data retrieved for ID: " . $user_id);
+        echo json_encode([
+            'success' => true,
+            'user' => $user
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        error_log("API Database Error: " . $e->getMessage());
+        echo json_encode(['error' => 'Database error occurred']);
     }
-
-    echo json_encode([
-        'success' => true,
-        'user' => $user
-    ]);
 }
 
 function createUser() {
@@ -202,7 +225,8 @@ function updateUser() {
     $full_name = sanitize($_POST['full_name'] ?? '');
     $role = sanitize($_POST['role'] ?? '');
     $password = $_POST['password'] ?? '';
-    $organization_id = (int)($_POST['organization_id'] ?? 0);
+    // Get organization_id from form, or use existing user's organization if not provided
+    $organization_id = isset($_POST['organization_id']) ? (int)$_POST['organization_id'] : null;
 
     if ($user_id <= 0) {
         http_response_code(400);
@@ -230,22 +254,28 @@ function updateUser() {
     }
 
     // Validate organization exists (if provided)
-    if ($organization_id > 0) {
-        if ($useNewTables) {
-            $organization = $db->fetch("SELECT id FROM organizations_new WHERE id = ?", [$organization_id]);
-        } else {
-            $organization = $db->fetch("SELECT id FROM organizations WHERE id = ?", [$organization_id]);
-        }
-        if (!$organization) {
+    if ($organization_id !== null) {
+        if ($organization_id === 15) {
+            // Special handling for Om Engineers (system admin organization)
+            if ($role !== 'admin') {
+                http_response_code(400);
+                echo json_encode(['error' => 'Om Engineers organization is reserved for system administrators']);
+                return;
+            }
+        } else if ($organization_id > 0) {
+            if ($useNewTables) {
+                $organization = $db->fetch("SELECT id FROM organizations_new WHERE id = ?", [$organization_id]);
+            } else {
+                $organization = $db->fetch("SELECT id FROM organizations WHERE id = ?", [$organization_id]);
+            }
+            if (!$organization) {
+                http_response_code(400);
+                echo json_encode(['error' => 'Selected organization does not exist']);
+                return;
+            }
+        } else if ($organization_id <= 0) {
             http_response_code(400);
-            echo json_encode(['error' => 'Selected organization does not exist']);
-            return;
-        }
-    } else if ($organization_id === 15) {
-        // Special handling for Om Engineers (system admin organization)
-        if ($role !== 'admin') {
-            http_response_code(400);
-            echo json_encode(['error' => 'Om Engineers organization is reserved for system administrators']);
+            echo json_encode(['error' => 'Invalid organization selected']);
             return;
         }
     }
@@ -274,7 +304,7 @@ function updateUser() {
     $sql = $useNewTables ? "UPDATE users_new SET username = ?, email = ?, full_name = ?, role = ?" : "UPDATE users SET username = ?, email = ?, full_name = ?, role = ?";
 
     // Update organization if provided (including 15 for Om Engineers)
-    if ($organization_id >= 0) {
+    if ($organization_id !== null) {
         $sql .= ", organization_id = ?";
         $params[] = $organization_id;
     }
@@ -310,16 +340,21 @@ function updateUser() {
 function deleteUser() {
     global $db, $useNewTables;
 
+    error_log("API: Delete user request");
+
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         http_response_code(400);
+        error_log("API Error: Invalid CSRF token for delete user");
         echo json_encode(['error' => 'Invalid security token']);
         return;
     }
 
     $user_id = (int)($_POST['user_id'] ?? 0);
+    error_log("API: Deleting user ID: " . $user_id);
 
     if ($user_id <= 0) {
         http_response_code(400);
+        error_log("API Error: Invalid user ID provided: " . $user_id);
         echo json_encode(['error' => 'Invalid user ID']);
         return;
     }
@@ -327,57 +362,78 @@ function deleteUser() {
     // Prevent admin from deleting themselves
     if ($user_id == $_SESSION['user_id']) {
         http_response_code(400);
+        error_log("API Error: User trying to delete their own account: " . $user_id);
         echo json_encode(['error' => 'Cannot delete your own account']);
         return;
     }
 
-    // Check if user has associated data
-    $hasVehicles = $db->fetch("SELECT COUNT(*) as count FROM vehicles WHERE user_id = ?", [$user_id])['count'] > 0;
-    $hasRequests = $db->fetch("SELECT COUNT(*) as count FROM service_requests WHERE user_id = ?", [$user_id])['count'] > 0;
-    $hasApprovals = $db->fetch("SELECT COUNT(*) as count FROM approvals WHERE approver_id = ?", [$user_id])['count'] > 0;
+    try {
+        // Check if user has associated data
+        $vehiclesResult = $db->fetch("SELECT COUNT(*) as count FROM vehicles WHERE user_id = ?", [$user_id]);
+        $hasVehicles = $vehiclesResult ? $vehiclesResult['count'] > 0 : false;
 
-    if ($hasVehicles || $hasRequests || $hasApprovals) {
-        // Soft delete by setting is_active to 0
-        if ($useNewTables) {
-            $result = $db->query("UPDATE users_new SET is_active = 0 WHERE id = ?", [$user_id]);
-        } else {
-            $result = $db->query("UPDATE users SET is_active = 0 WHERE id = ?", [$user_id]);
-        }
-        $message = 'User deactivated successfully (has associated data)';
-    } else {
-        // Hard delete if no associated data
-        if ($useNewTables) {
-            $result = $db->query("DELETE FROM users_new WHERE id = ?", [$user_id]);
-        } else {
-            $result = $db->query("DELETE FROM users WHERE id = ?", [$user_id]);
-        }
-        $message = 'User deleted successfully';
-    }
+        $requestsResult = $db->fetch("SELECT COUNT(*) as count FROM service_requests WHERE user_id = ?", [$user_id]);
+        $hasRequests = $requestsResult ? $requestsResult['count'] > 0 : false;
 
-    if ($result) {
-        echo json_encode([
-            'success' => true,
-            'message' => $message
-        ]);
-    } else {
+        $approvalsResult = $db->fetch("SELECT COUNT(*) as count FROM approvals WHERE approver_id = ?", [$user_id]);
+        $hasApprovals = $approvalsResult ? $approvalsResult['count'] > 0 : false;
+
+        if ($hasVehicles || $hasRequests || $hasApprovals) {
+            // Soft delete by setting is_active to 0
+            error_log("API: Soft deleting user (has associated data): " . $user_id);
+            if ($useNewTables) {
+                $result = $db->query("UPDATE users_new SET is_active = 0 WHERE id = ?", [$user_id]);
+            } else {
+                $result = $db->query("UPDATE users SET is_active = 0 WHERE id = ?", [$user_id]);
+            }
+            $message = 'User deactivated successfully (has associated data)';
+        } else {
+            // Hard delete if no associated data
+            error_log("API: Hard deleting user (no associated data): " . $user_id);
+            if ($useNewTables) {
+                $result = $db->query("DELETE FROM users_new WHERE id = ?", [$user_id]);
+            } else {
+                $result = $db->query("DELETE FROM users WHERE id = ?", [$user_id]);
+            }
+            $message = 'User deleted successfully';
+        }
+
+        if ($result) {
+            error_log("API Success: User deletion completed for ID: " . $user_id);
+            echo json_encode([
+                'success' => true,
+                'message' => $message
+            ]);
+        } else {
+            http_response_code(500);
+            error_log("API Error: Database operation failed for user ID: " . $user_id);
+            echo json_encode(['error' => 'Failed to delete user']);
+        }
+    } catch (Exception $e) {
         http_response_code(500);
-        echo json_encode(['error' => 'Failed to delete user']);
+        error_log("API Database Error in deleteUser: " . $e->getMessage());
+        echo json_encode(['error' => 'Database error occurred']);
     }
 }
 
 function toggleUserStatus() {
     global $db, $useNewTables;
 
+    error_log("API: Toggle user status request");
+
     if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
         http_response_code(400);
+        error_log("API Error: Invalid CSRF token for toggle status");
         echo json_encode(['error' => 'Invalid security token']);
         return;
     }
 
     $user_id = (int)($_POST['user_id'] ?? 0);
+    error_log("API: Toggling status for user ID: " . $user_id);
 
     if ($user_id <= 0) {
         http_response_code(400);
+        error_log("API Error: Invalid user ID provided: " . $user_id);
         echo json_encode(['error' => 'Invalid user ID']);
         return;
     }
@@ -385,39 +441,48 @@ function toggleUserStatus() {
     // Prevent admin from deactivating themselves
     if ($user_id == $_SESSION['user_id']) {
         http_response_code(400);
+        error_log("API Error: User trying to change their own status: " . $user_id);
         echo json_encode(['error' => 'Cannot change your own status']);
         return;
     }
 
-    // Toggle status
-    if ($useNewTables) {
-        $result = $db->query(
-            "UPDATE users_new SET is_active = NOT is_active WHERE id = ?",
-            [$user_id]
-        );
-    } else {
-        $result = $db->query(
-            "UPDATE users SET is_active = NOT is_active WHERE id = ?",
-            [$user_id]
-        );
-    }
-
-    if ($result) {
+    try {
+        // Toggle status
         if ($useNewTables) {
-            $user = $db->fetch("SELECT is_active FROM users_new WHERE id = ?", [$user_id]);
+            $result = $db->query(
+                "UPDATE users_new SET is_active = NOT is_active WHERE id = ?",
+                [$user_id]
+            );
         } else {
-            $user = $db->fetch("SELECT is_active FROM users WHERE id = ?", [$user_id]);
+            $result = $db->query(
+                "UPDATE users SET is_active = NOT is_active WHERE id = ?",
+                [$user_id]
+            );
         }
-        $status = $user['is_active'] ? 'activated' : 'deactivated';
 
-        echo json_encode([
-            'success' => true,
-            'message' => "User {$status} successfully",
-            'is_active' => $user['is_active']
-        ]);
-    } else {
+        if ($result) {
+            if ($useNewTables) {
+                $user = $db->fetch("SELECT is_active FROM users_new WHERE id = ?", [$user_id]);
+            } else {
+                $user = $db->fetch("SELECT is_active FROM users WHERE id = ?", [$user_id]);
+            }
+            $status = $user['is_active'] ? 'activated' : 'deactivated';
+
+            error_log("API Success: User status toggled to: " . $status);
+            echo json_encode([
+                'success' => true,
+                'message' => "User {$status} successfully",
+                'is_active' => $user['is_active']
+            ]);
+        } else {
+            http_response_code(500);
+            error_log("API Error: Database update failed for user ID: " . $user_id);
+            echo json_encode(['error' => 'Failed to update user status']);
+        }
+    } catch (Exception $e) {
         http_response_code(500);
-        echo json_encode(['error' => 'Failed to update user status']);
+        error_log("API Database Error in toggleUserStatus: " . $e->getMessage());
+        echo json_encode(['error' => 'Database error occurred']);
     }
 }
 ?>

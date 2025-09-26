@@ -572,6 +572,7 @@ include '../includes/admin_head.php';
             const formData = new FormData(form);
 
             try {
+                console.log('Submitting edit user form...');
                 const submitButton = form.querySelector('button[type="submit"]');
                 submitButton.disabled = true;
                 submitButton.textContent = 'Updating...';
@@ -581,17 +582,37 @@ include '../includes/admin_head.php';
                     body: formData
                 });
 
-                const result = await response.json();
+                if (!response.ok) {
+                    console.error('HTTP error:', response.status, response.statusText);
+                    showNotification(`Update failed (HTTP ${response.status})`, 'error');
+                    return;
+                }
+
+                let result;
+                const responseText = await response.text();
+                console.log('Raw edit user response:', responseText);
+
+                try {
+                    result = JSON.parse(responseText);
+                    console.log('Parsed edit user response:', result);
+                } catch (jsonError) {
+                    console.error('JSON parse error:', jsonError);
+                    console.error('Response was not valid JSON:', responseText);
+                    showNotification('Server returned invalid response. Check console for details.', 'error');
+                    return;
+                }
 
                 if (result.success) {
                     closeModal('editUserModal');
                     showNotification(result.message || 'User updated successfully', 'success');
                     setTimeout(() => location.reload(), 1000);
                 } else {
+                    console.error('Update error:', result.error);
                     showNotification(result.error || 'Failed to update user', 'error');
                 }
             } catch (error) {
-                showNotification('Network error occurred', 'error');
+                console.error('Network error during update:', error);
+                showNotification('Network error: Failed to update user', 'error');
             } finally {
                 const submitButton = form.querySelector('button[type="submit"]');
                 submitButton.disabled = false;
@@ -602,15 +623,37 @@ include '../includes/admin_head.php';
         // Edit user function
         async function editUser(userId) {
             try {
+                console.log('Loading user data for ID:', userId);
                 const response = await fetch(`../api/users.php?action=get&id=${userId}`);
-                const result = await response.json();
+
+                if (!response.ok) {
+                    console.error('HTTP error:', response.status, response.statusText);
+                    showNotification(`Failed to load user data (HTTP ${response.status})`, 'error');
+                    return;
+                }
+
+                let result;
+                const responseText = await response.text();
+                console.log('Raw user data response:', responseText);
+
+                try {
+                    result = JSON.parse(responseText);
+                    console.log('Parsed user data response:', result);
+                } catch (jsonError) {
+                    console.error('JSON parse error:', jsonError);
+                    console.error('Response was not valid JSON:', responseText);
+                    showNotification('Server returned invalid response. Check console for details.', 'error');
+                    return;
+                }
 
                 if (result.error) {
+                    console.error('API error:', result.error);
                     showNotification(result.error, 'error');
                     return;
                 }
 
                 if (!result.success || !result.user) {
+                    console.error('No user data returned:', result);
                     showNotification('Failed to load user data', 'error');
                     return;
                 }
@@ -633,36 +676,59 @@ include '../includes/admin_head.php';
                 // Clear password field
                 document.getElementById('edit_password').value = '';
 
+                console.log('Opening edit modal for user:', user.username);
                 document.getElementById('editUserModal').style.display = 'flex';
             } catch (error) {
-                console.error('Error loading user data:', error);
-                showNotification('Failed to load user data', 'error');
+                console.error('Network error loading user data:', error);
+                showNotification('Network error: Failed to load user data', 'error');
             }
         }
 
         // Toggle user status
         async function toggleUserStatus(userId) {
             try {
+                console.log('Toggling status for user ID:', userId);
                 const formData = new FormData();
                 formData.append('action', 'toggle_status');
                 formData.append('user_id', userId);
                 formData.append('csrf_token', '<?php echo generateCSRFToken(); ?>');
 
+                console.log('Sending toggle status request to API...');
                 const response = await fetch('../api/users.php', {
                     method: 'POST',
                     body: formData
                 });
 
-                const result = await response.json();
+                if (!response.ok) {
+                    console.error('HTTP error:', response.status, response.statusText);
+                    showNotification(`Status update failed (HTTP ${response.status})`, 'error');
+                    return;
+                }
+
+                let result;
+                const responseText = await response.text();
+                console.log('Raw toggle status response:', responseText);
+
+                try {
+                    result = JSON.parse(responseText);
+                    console.log('Parsed toggle status response:', result);
+                } catch (jsonError) {
+                    console.error('JSON parse error:', jsonError);
+                    console.error('Response was not valid JSON:', responseText);
+                    showNotification('Server returned invalid response. Check console for details.', 'error');
+                    return;
+                }
 
                 if (result.success) {
                     showNotification(result.message, 'success');
                     setTimeout(() => location.reload(), 1000);
                 } else {
-                    showNotification(result.error, 'error');
+                    console.error('Toggle status error:', result.error);
+                    showNotification(result.error || 'Failed to update user status', 'error');
                 }
             } catch (error) {
-                showNotification('Network error occurred', 'error');
+                console.error('Network error during status toggle:', error);
+                showNotification('Network error: Failed to update user status', 'error');
             }
         }
 
@@ -673,26 +739,48 @@ include '../includes/admin_head.php';
             }
 
             try {
+                console.log('Deleting user with ID:', userId);
                 const formData = new FormData();
                 formData.append('action', 'delete');
                 formData.append('user_id', userId);
                 formData.append('csrf_token', '<?php echo generateCSRFToken(); ?>');
 
+                console.log('Sending delete request to API...');
                 const response = await fetch('../api/users.php', {
                     method: 'POST',
                     body: formData
                 });
 
-                const result = await response.json();
+                if (!response.ok) {
+                    console.error('HTTP error:', response.status, response.statusText);
+                    showNotification(`Delete failed (HTTP ${response.status})`, 'error');
+                    return;
+                }
+
+                let result;
+                const responseText = await response.text();
+                console.log('Raw delete response:', responseText);
+
+                try {
+                    result = JSON.parse(responseText);
+                    console.log('Parsed delete response:', result);
+                } catch (jsonError) {
+                    console.error('JSON parse error:', jsonError);
+                    console.error('Response was not valid JSON:', responseText);
+                    showNotification('Server returned invalid response. Check console for details.', 'error');
+                    return;
+                }
 
                 if (result.success) {
                     showNotification(result.message, 'success');
                     setTimeout(() => location.reload(), 1000);
                 } else {
-                    showNotification(result.error, 'error');
+                    console.error('Delete error:', result.error);
+                    showNotification(result.error || 'Failed to delete user', 'error');
                 }
             } catch (error) {
-                showNotification('Network error occurred', 'error');
+                console.error('Network error during delete:', error);
+                showNotification('Network error: Failed to delete user', 'error');
             }
         }
 
