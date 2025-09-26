@@ -72,7 +72,7 @@ A comprehensive web-based vehicle maintenance quotation and approval system buil
    - Create a MySQL database named `om_requestor`
    - Import the database schema:
    ```bash
-   mysql -u your_username -p om_requestor < database/schema.sql
+   mysql -u your_username -p om_requestor < database/new_schema.sql
    ```
 
 3. **Configuration**
@@ -85,18 +85,13 @@ A comprehensive web-based vehicle maintenance quotation and approval system buil
    define('DB_PASS', 'your_db_password');
 
    define('SMTP_HOST', 'your_smtp_host');
-   define('SMTP_USERNAME', 'admin@om-engineers.org');
+   define('SMTP_USERNAME', 'your_smtp_username');
    define('SMTP_PASSWORD', 'your_email_password');
    ```
 
 4. **File Permissions**
    - Ensure web server has read/write access to the project directory
    - Set appropriate permissions for uploads (if implemented)
-
-5. **Default Login**
-   - Username: `admin`
-   - Password: `admin123`
-   - Email: `admin@om-engineers.org`
 
 ### File Structure
 ```
@@ -235,5 +230,5 @@ This system is proprietary software developed specifically for Om Engineers and 
 ---
 
 **Version**: 1.0.0
-**Last Updated**: November 2024
-**Developed by**: Claude Code for Om Engineers
+**Last Updated**: September 2025
+**Developed by**: Amit for Om Engineers
