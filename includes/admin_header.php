@@ -2,17 +2,10 @@
 // Admin header component - Enhanced for new quotation-centric system
 // Expects $pageTitle to be set before including this file
 
-// Check if new system is available
-$useNewTables = useNewDatabase();
-
 // Get all organizations for dropdown (only for admins, exclude Om Engineers)
 $allOrganizations = [];
 if ($_SESSION['role'] === 'admin') {
-    if ($useNewTables) {
-        $allOrganizations = $db->fetchAll("SELECT id, name FROM organizations_new WHERE id != 15 ORDER BY name");
-    } else {
-        $allOrganizations = $db->fetchAll("SELECT id, name FROM organizations WHERE id != 15 ORDER BY name");
-    }
+    $allOrganizations = $db->fetchAll("SELECT id, name FROM organizations_new WHERE id != 15 ORDER BY name");
 }
 
 // Get current organization info - ensure Om Engineers admin defaults to first client org
@@ -30,11 +23,7 @@ if ($currentOrgId == 15) {
     // This should not happen anymore, but keep as fallback
     $currentOrgName = 'Om Engineers (System Admin)';
 } else {
-    if ($useNewTables) {
-        $currentOrg = $db->fetch("SELECT name FROM organizations_new WHERE id = ?", [$currentOrgId]);
-    } else {
-        $currentOrg = $db->fetch("SELECT name FROM organizations WHERE id = ?", [$currentOrgId]);
-    }
+    $currentOrg = $db->fetch("SELECT name FROM organizations_new WHERE id = ?", [$currentOrgId]);
     $currentOrgName = $currentOrg['name'] ?? 'Organization';
 }
 ?>

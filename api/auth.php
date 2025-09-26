@@ -67,9 +67,9 @@ switch ($action) {
 function getDashboardUrl($role) {
     switch ($role) {
         case 'admin':
-            return url('dashboard/admin.php');
+            return url('dashboard/admin_new.php');
         case 'requestor':
-            return url('dashboard/requestor.php');
+            return url('dashboard/quotation_manager.php');
         case 'approver':
             return url('dashboard/approver.php');
         default:

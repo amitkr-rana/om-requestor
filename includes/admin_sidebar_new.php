@@ -4,18 +4,9 @@ $currentPage = basename($_SERVER['PHP_SELF'], '.php');
 
 // Get organization name if not already loaded
 if (!isset($organizationName)) {
-    // Try new organizations table first, fallback to old
-    $useNewTables = useNewDatabase();
-    if ($useNewTables) {
-        $orgResult = $db->fetch("SELECT name FROM organizations_new WHERE id = ? LIMIT 1", [$_SESSION['organization_id']]);
-    } else {
-        $orgResult = $db->fetch("SELECT name FROM organizations WHERE id = ? LIMIT 1", [$_SESSION['organization_id']]);
-    }
+    $orgResult = $db->fetch("SELECT name FROM organizations_new WHERE id = ? LIMIT 1", [$_SESSION['organization_id']]);
     $organizationName = $orgResult ? $orgResult['name'] : ($_SESSION['organization_name'] ?? 'Organization');
 }
-
-// Check if new system is available
-$useNewTables = useNewDatabase();
 ?>
 <div class="layout-content-container flex flex-col w-80 bg-white border-r border-blue-100">
     <div class="flex h-full flex-col justify-between p-6">
@@ -27,54 +18,23 @@ $useNewTables = useNewDatabase();
                 <h1 class="text-blue-900 text-lg font-semibold leading-normal"><?php echo APP_NAME; ?></h1>
             </div>
 
-            <!-- System Status Indicator -->
-            <?php if ($useNewTables): ?>
-            <div class="px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
-                <div class="flex items-center gap-2">
-                    <span class="w-2 h-2 bg-green-500 rounded-full"></span>
-                    <span class="text-green-700 text-xs font-medium">New System Active</span>
-                </div>
-            </div>
-            <?php else: ?>
-            <div class="px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
-                <div class="flex items-center gap-2">
-                    <span class="w-2 h-2 bg-amber-500 rounded-full"></span>
-                    <span class="text-amber-700 text-xs font-medium">Legacy Mode</span>
-                </div>
-            </div>
-            <?php endif; ?>
 
             <div class="flex flex-col gap-2">
                 <!-- Dashboard -->
-                <a href="<?php echo $useNewTables ? 'admin_new.php' : 'admin.php'; ?>"
+                <a href="admin_new.php"
                    class="flex items-center gap-3 px-4 py-3 rounded-lg <?php echo in_array($currentPage, ['admin', 'admin_new']) ? 'bg-blue-100 text-blue-700' : 'text-blue-600 hover:bg-blue-50'; ?> transition-colors">
                     <span class="material-icons text-xl">dashboard</span>
                     <p class="text-sm font-medium leading-normal">Dashboard</p>
                 </a>
 
                 <!-- Quotation Management -->
-                <?php if ($useNewTables): ?>
                 <a href="quotation_manager.php"
                    class="flex items-center gap-3 px-4 py-3 rounded-lg <?php echo $currentPage === 'quotation_manager' ? 'bg-blue-100 text-blue-700' : 'text-blue-600 hover:bg-blue-50'; ?> transition-colors">
                     <span class="material-icons text-xl">assignment</span>
                     <p class="text-sm font-medium leading-normal">Quotation Manager</p>
                 </a>
-                <?php else: ?>
-                <a href="quotations.php"
-                   class="flex items-center gap-3 px-4 py-3 rounded-lg <?php echo $currentPage === 'quotations' ? 'bg-blue-100 text-blue-700' : 'text-blue-600 hover:bg-blue-50'; ?> transition-colors">
-                    <span class="material-icons text-xl">receipt</span>
-                    <p class="text-sm font-medium leading-normal">Quotations</p>
-                </a>
 
-                <a href="quotation_creator.php"
-                   class="flex items-center gap-3 px-4 py-3 rounded-lg <?php echo $currentPage === 'quotation_creator' ? 'bg-blue-100 text-blue-700' : 'text-blue-600 hover:bg-blue-50'; ?> transition-colors">
-                    <span class="material-icons text-xl">add_business</span>
-                    <p class="text-sm font-medium leading-normal">Quotation Creator</p>
-                </a>
-                <?php endif; ?>
-
-                <!-- Inventory Management (New System Only) -->
-                <?php if ($useNewTables): ?>
+                <!-- Inventory Management -->
                 <a href="inventory_manager.php"
                    class="flex items-center gap-3 px-4 py-3 rounded-lg <?php echo $currentPage === 'inventory_manager' ? 'bg-blue-100 text-blue-700' : 'text-blue-600 hover:bg-blue-50'; ?> transition-colors">
                     <span class="material-icons text-xl">inventory</span>
@@ -89,7 +49,6 @@ $useNewTables = useNewDatabase();
                     </span>
                     <?php endif; ?>
                 </a>
-                <?php endif; ?>
 
                 <!-- User Management -->
                 <a href="users.php"
@@ -98,32 +57,15 @@ $useNewTables = useNewDatabase();
                     <p class="text-sm font-medium leading-normal">Users</p>
                 </a>
 
-                <!-- Vehicles (Legacy System Only) -->
-                <?php if (!$useNewTables): ?>
-                <a href="vehicles.php"
-                   class="flex items-center gap-3 px-4 py-3 rounded-lg <?php echo $currentPage === 'vehicles' ? 'bg-blue-100 text-blue-700' : 'text-blue-600 hover:bg-blue-50'; ?> transition-colors">
-                    <span class="material-icons text-xl">directions_car</span>
-                    <p class="text-sm font-medium leading-normal">Vehicles</p>
-                </a>
-                <?php endif; ?>
 
                 <!-- Reports and Analytics -->
-                <?php if ($useNewTables): ?>
                 <a href="reports_dashboard.php"
                    class="flex items-center gap-3 px-4 py-3 rounded-lg <?php echo $currentPage === 'reports_dashboard' ? 'bg-blue-100 text-blue-700' : 'text-blue-600 hover:bg-blue-50'; ?> transition-colors">
                     <span class="material-icons text-xl">analytics</span>
                     <p class="text-sm font-medium leading-normal">Reports & Analytics</p>
                 </a>
-                <?php else: ?>
-                <a href="reports.php"
-                   class="flex items-center gap-3 px-4 py-3 rounded-lg <?php echo $currentPage === 'reports' ? 'bg-blue-100 text-blue-700' : 'text-blue-600 hover:bg-blue-50'; ?> transition-colors">
-                    <span class="material-icons text-xl">assessment</span>
-                    <p class="text-sm font-medium leading-normal">Reports</p>
-                </a>
-                <?php endif; ?>
 
-                <!-- System Management Section (New System Only) -->
-                <?php if ($useNewTables): ?>
+                <!-- System Management Section -->
                 <div class="border-t border-blue-100 pt-4 mt-4">
                     <p class="text-blue-500 text-xs font-medium uppercase tracking-wide mb-2 px-4">System</p>
 
@@ -150,13 +92,11 @@ $useNewTables = useNewDatabase();
                         <p class="text-sm font-medium leading-normal">Activity Log</p>
                     </a>
                 </div>
-                <?php endif; ?>
 
                 <!-- Quick Actions Section -->
                 <div class="border-t border-blue-100 pt-4 mt-4">
                     <p class="text-blue-500 text-xs font-medium uppercase tracking-wide mb-2 px-4">Quick Actions</p>
 
-                    <?php if ($useNewTables): ?>
                     <!-- Create Quotation -->
                     <button onclick="window.location.href='quotation_manager.php?action=create'"
                             class="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors">
@@ -170,14 +110,6 @@ $useNewTables = useNewDatabase();
                         <span class="material-icons text-xl">add_box</span>
                         <p class="text-sm font-medium leading-normal">Add Inventory</p>
                     </button>
-                    <?php else: ?>
-                    <!-- Legacy Quick Actions -->
-                    <button onclick="window.location.href='quotations.php?action=create'"
-                            class="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors">
-                        <span class="material-icons text-xl">add_circle</span>
-                        <p class="text-sm font-medium leading-normal">Create Quotation</p>
-                    </button>
-                    <?php endif; ?>
 
                     <!-- Add User (Common) -->
                     <button onclick="window.location.href='users.php?action=create'"

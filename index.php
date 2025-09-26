@@ -10,20 +10,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
         $password = $_POST['password'];
 
         if (login($username, $password)) {
-            // Check if new system is available
-            $useNewTables = useNewDatabase();
-
-            // Redirect based on role and system availability
+            // Redirect based on role
             switch ($_SESSION['role']) {
                 case 'admin':
-                    if ($useNewTables) {
-                        header('Location: dashboard/admin_new.php');
-                    } else {
-                        header('Location: dashboard/admin.php');
-                    }
+                    header('Location: dashboard/admin_new.php');
                     break;
                 case 'requestor':
-                    header('Location: dashboard/requestor.php');
+                    header('Location: dashboard/quotation_manager.php');
                     break;
                 case 'approver':
                     header('Location: dashboard/approver.php');
@@ -38,19 +31,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
 
 // Redirect if already logged in
 if (isLoggedIn()) {
-    // Check if new system is available
-    $useNewTables = useNewDatabase();
-
     switch ($_SESSION['role']) {
         case 'admin':
-            if ($useNewTables) {
-                header('Location: dashboard/admin_new.php');
-            } else {
-                header('Location: dashboard/admin.php');
-            }
+            header('Location: dashboard/admin_new.php');
             break;
         case 'requestor':
-            header('Location: dashboard/requestor.php');
+            header('Location: dashboard/quotation_manager.php');
             break;
         case 'approver':
             header('Location: dashboard/approver.php');

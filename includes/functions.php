@@ -21,28 +21,14 @@ function apiUrl($endpoint = '') {
 function login($username, $password) {
     global $db;
 
-    // Detect which database system to use
-    $useNewTables = useNewDatabase();
-
-    if ($useNewTables) {
-        // Use new database structure
-        $user = $db->fetch(
-            "SELECT u.*, o.name as organization_name
-             FROM users_new u
-             JOIN organizations_new o ON u.organization_id = o.id
-             WHERE (u.username = ? OR u.email = ?) AND u.is_active = 1",
-            [$username, $username]
-        );
-    } else {
-        // Use old database structure
-        $user = $db->fetch(
-            "SELECT u.*, o.name as organization_name
-             FROM users u
-             JOIN organizations o ON u.organization_id = o.id
-             WHERE (u.username = ? OR u.email = ?) AND u.is_active = 1",
-            [$username, $username]
-        );
-    }
+    // Use new database structure
+    $user = $db->fetch(
+        "SELECT u.*, o.name as organization_name
+         FROM users_new u
+         JOIN organizations_new o ON u.organization_id = o.id
+         WHERE (u.username = ? OR u.email = ?) AND u.is_active = 1",
+        [$username, $username]
+    );
 
     if ($user && password_verify($password, $user['password'])) {
         $_SESSION['user_id'] = $user['id'];
@@ -56,12 +42,8 @@ function login($username, $password) {
             $_SESSION['is_om_engineers_admin'] = true;
             $_SESSION['original_organization_id'] = $user['organization_id'];
 
-            // Get first available client organization using appropriate table
-            if ($useNewTables) {
-                $clientOrg = $db->fetch("SELECT id, name FROM organizations_new WHERE id != 15 ORDER BY name LIMIT 1");
-            } else {
-                $clientOrg = $db->fetch("SELECT id, name FROM organizations WHERE id != 15 ORDER BY name LIMIT 1");
-            }
+            // Get first available client organization
+            $clientOrg = $db->fetch("SELECT id, name FROM organizations_new WHERE id != 15 ORDER BY name LIMIT 1");
 
             if ($clientOrg) {
                 $_SESSION['organization_id'] = $clientOrg['id'];
@@ -574,35 +556,30 @@ function useNewDatabase() {
 function getQuotationsForUser($user_id, $role, $organization_id, $limit = 50) {
     global $db;
 
-    if (useNewDatabase()) {
-        // Use new database structure
-        if ($role === 'requestor') {
-            return $db->fetchAll(
-                "SELECT q.*, u.full_name as created_by_name, a.full_name as approved_by_name
-                 FROM quotations_new q
-                 LEFT JOIN users_new u ON q.created_by = u.id
-                 LEFT JOIN users_new a ON q.approved_by = a.id
-                 WHERE q.created_by = ? AND q.organization_id = ?
-                 ORDER BY q.created_at DESC
-                 LIMIT ?",
-                [$user_id, $organization_id, $limit]
-            );
-        } else {
-            return $db->fetchAll(
-                "SELECT q.*, u.full_name as created_by_name, a.full_name as approved_by_name, t.full_name as assigned_to_name
-                 FROM quotations_new q
-                 LEFT JOIN users_new u ON q.created_by = u.id
-                 LEFT JOIN users_new a ON q.approved_by = a.id
-                 LEFT JOIN users_new t ON q.assigned_to = t.id
-                 WHERE q.organization_id = ?
-                 ORDER BY q.created_at DESC
-                 LIMIT ?",
-                [$organization_id, $limit]
-            );
-        }
+    // Use new database structure
+    if ($role === 'requestor') {
+        return $db->fetchAll(
+            "SELECT q.*, u.full_name as created_by_name, a.full_name as approved_by_name
+             FROM quotations_new q
+             LEFT JOIN users_new u ON q.created_by = u.id
+             LEFT JOIN users_new a ON q.approved_by = a.id
+             WHERE q.created_by = ? AND q.organization_id = ?
+             ORDER BY q.created_at DESC
+             LIMIT ?",
+            [$user_id, $organization_id, $limit]
+        );
     } else {
-        // Fallback to old database structure
-        return getServiceRequests(['user_id' => $role === 'requestor' ? $user_id : null]);
+        return $db->fetchAll(
+            "SELECT q.*, u.full_name as created_by_name, a.full_name as approved_by_name, t.full_name as assigned_to_name
+             FROM quotations_new q
+             LEFT JOIN users_new u ON q.created_by = u.id
+             LEFT JOIN users_new a ON q.approved_by = a.id
+             LEFT JOIN users_new t ON q.assigned_to = t.id
+             WHERE q.organization_id = ?
+             ORDER BY q.created_at DESC
+             LIMIT ?",
+            [$organization_id, $limit]
+        );
     }
 }
 

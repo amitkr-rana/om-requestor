@@ -3,114 +3,61 @@ require_once '../includes/functions.php';
 
 requireRole('admin');
 
-// Check if we should use new database tables
-$useNewTables = useNewDatabase();
+// Use new quotations system with enhanced workflow
 
-if ($useNewTables) {
-    // NEW SYSTEM: Use quotations_new table with enhanced workflow
+// Get dashboard statistics - filter by current organization context
+$orgFilter = 'WHERE q.organization_id = ?';
+$orgParams = [$_SESSION['organization_id']];
 
-    // Get dashboard statistics - filter by current organization context
-    $orgFilter = 'WHERE q.organization_id = ?';
-    $orgParams = [$_SESSION['organization_id']];
+// Enhanced statistics for new quotation-centric system
+$pendingQuotationsResult = $db->fetch("SELECT COUNT(*) as count FROM quotations_new q $orgFilter AND q.status = 'pending'", $orgParams);
+$sentQuotationsResult = $db->fetch("SELECT COUNT(*) as count FROM quotations_new q $orgFilter AND q.status = 'sent'", $orgParams);
+$approvedQuotationsResult = $db->fetch("SELECT COUNT(*) as count FROM quotations_new q $orgFilter AND q.status = 'approved'", $orgParams);
+$repairsInProgressResult = $db->fetch("SELECT COUNT(*) as count FROM quotations_new q $orgFilter AND q.status = 'repair_in_progress'", $orgParams);
+$completedRepairsResult = $db->fetch("SELECT COUNT(*) as count FROM quotations_new q $orgFilter AND q.status = 'repair_complete'", $orgParams);
+$billsGeneratedResult = $db->fetch("SELECT COUNT(*) as count FROM quotations_new q $orgFilter AND q.status = 'bill_generated'", $orgParams);
+$paymentsReceivedResult = $db->fetch("SELECT COUNT(*) as count FROM quotations_new q $orgFilter AND q.status = 'paid'", $orgParams);
 
-    // Enhanced statistics for new quotation-centric system
-    $pendingQuotationsResult = $db->fetch("SELECT COUNT(*) as count FROM quotations_new q $orgFilter AND q.status = 'pending'", $orgParams);
-    $sentQuotationsResult = $db->fetch("SELECT COUNT(*) as count FROM quotations_new q $orgFilter AND q.status = 'sent'", $orgParams);
-    $approvedQuotationsResult = $db->fetch("SELECT COUNT(*) as count FROM quotations_new q $orgFilter AND q.status = 'approved'", $orgParams);
-    $repairsInProgressResult = $db->fetch("SELECT COUNT(*) as count FROM quotations_new q $orgFilter AND q.status = 'repair_in_progress'", $orgParams);
-    $completedRepairsResult = $db->fetch("SELECT COUNT(*) as count FROM quotations_new q $orgFilter AND q.status = 'repair_complete'", $orgParams);
-    $billsGeneratedResult = $db->fetch("SELECT COUNT(*) as count FROM quotations_new q $orgFilter AND q.status = 'bill_generated'", $orgParams);
-    $paymentsReceivedResult = $db->fetch("SELECT COUNT(*) as count FROM quotations_new q $orgFilter AND q.status = 'paid'", $orgParams);
+// Calculate total revenue and outstanding amounts
+$revenueResult = $db->fetch("SELECT COALESCE(SUM(b.paid_amount), 0) as revenue FROM billing b JOIN quotations_new q ON b.quotation_id = q.id $orgFilter", $orgParams);
+$outstandingResult = $db->fetch("SELECT COALESCE(SUM(b.balance_amount), 0) as outstanding FROM billing b JOIN quotations_new q ON b.quotation_id = q.id WHERE q.organization_id = ? AND b.payment_status IN ('unpaid', 'partial')", $orgParams);
 
-    // Calculate total revenue and outstanding amounts
-    $revenueResult = $db->fetch("SELECT COALESCE(SUM(b.paid_amount), 0) as revenue FROM billing b JOIN quotations_new q ON b.quotation_id = q.id $orgFilter", $orgParams);
-    $outstandingResult = $db->fetch("SELECT COALESCE(SUM(b.balance_amount), 0) as outstanding FROM billing b JOIN quotations_new q ON b.quotation_id = q.id WHERE q.organization_id = ? AND b.payment_status IN ('unpaid', 'partial')", $orgParams);
+$stats = [
+    'pending_quotations' => $pendingQuotationsResult ? $pendingQuotationsResult['count'] : 0,
+    'sent_quotations' => $sentQuotationsResult ? $sentQuotationsResult['count'] : 0,
+    'approved_quotations' => $approvedQuotationsResult ? $approvedQuotationsResult['count'] : 0,
+    'repairs_in_progress' => $repairsInProgressResult ? $repairsInProgressResult['count'] : 0,
+    'completed_repairs' => $completedRepairsResult ? $completedRepairsResult['count'] : 0,
+    'bills_generated' => $billsGeneratedResult ? $billsGeneratedResult['count'] : 0,
+    'payments_received' => $paymentsReceivedResult ? $paymentsReceivedResult['count'] : 0,
+    'total_revenue' => $revenueResult ? $revenueResult['revenue'] : 0,
+    'outstanding_amount' => $outstandingResult ? $outstandingResult['outstanding'] : 0
+];
 
-    $stats = [
-        'pending_quotations' => $pendingQuotationsResult ? $pendingQuotationsResult['count'] : 0,
-        'sent_quotations' => $sentQuotationsResult ? $sentQuotationsResult['count'] : 0,
-        'approved_quotations' => $approvedQuotationsResult ? $approvedQuotationsResult['count'] : 0,
-        'repairs_in_progress' => $repairsInProgressResult ? $repairsInProgressResult['count'] : 0,
-        'completed_repairs' => $completedRepairsResult ? $completedRepairsResult['count'] : 0,
-        'bills_generated' => $billsGeneratedResult ? $billsGeneratedResult['count'] : 0,
-        'payments_received' => $paymentsReceivedResult ? $paymentsReceivedResult['count'] : 0,
-        'total_revenue' => $revenueResult ? $revenueResult['revenue'] : 0,
-        'outstanding_amount' => $outstandingResult ? $outstandingResult['outstanding'] : 0
-    ];
+// Get recent quotation activities
+$recentActivities = $db->fetchAll(
+    "SELECT q.id, q.quotation_number, q.customer_name, q.vehicle_registration,
+            q.problem_description, q.status, q.total_amount, q.priority,
+            q.created_at, q.updated_at,
+            u.full_name as created_by_name,
+            'quotation' as activity_type
+     FROM quotations_new q
+     LEFT JOIN users_new u ON q.created_by = u.id
+     WHERE q.organization_id = ?
+     ORDER BY q.updated_at DESC
+     LIMIT 8",
+    $orgParams
+);
 
-    // Get recent quotation activities
-    $recentActivities = $db->fetchAll(
-        "SELECT q.id, q.quotation_number, q.customer_name, q.vehicle_registration,
-                q.problem_description, q.status, q.total_amount, q.priority,
-                q.created_at, q.updated_at,
-                u.full_name as created_by_name,
-                'quotation' as activity_type
-         FROM quotations_new q
-         LEFT JOIN users_new u ON q.created_by = u.id
-         WHERE q.organization_id = ?
-         ORDER BY q.updated_at DESC
-         LIMIT 8",
+// Get inventory alerts if inventory system is available
+$inventoryAlerts = [];
+if ($db->fetchAll("SHOW TABLES LIKE 'inventory'")) {
+    $inventoryAlerts = $db->fetchAll(
+        "SELECT COUNT(*) as low_stock_count
+         FROM inventory
+         WHERE organization_id = ? AND is_active = 1 AND available_stock <= reorder_level",
         $orgParams
     );
-
-    // Get inventory alerts if inventory system is available
-    $inventoryAlerts = [];
-    if ($db->fetchAll("SHOW TABLES LIKE 'inventory'")) {
-        $inventoryAlerts = $db->fetchAll(
-            "SELECT COUNT(*) as low_stock_count
-             FROM inventory
-             WHERE organization_id = ? AND is_active = 1 AND available_stock <= reorder_level",
-            $orgParams
-        );
-    }
-
-} else {
-    // FALLBACK: Use old system queries (for backward compatibility)
-
-    // Get dashboard statistics - filter by current organization context via users table
-    $orgJoin = '';
-    $orgFilter = '';
-    $orgParams = [];
-    if ($_SESSION['organization_id'] != 2) { // If not Om Engineers admin
-        $orgJoin = ' JOIN users u ON sr.user_id = u.id';
-        $orgFilter = ' AND u.organization_id = ?';
-        $orgParams = [$_SESSION['organization_id']];
-    }
-
-    // Get dashboard statistics with safe array access
-    $newQuotationRequestsResult = $db->fetch("SELECT COUNT(*) as count FROM service_requests sr {$orgJoin} WHERE sr.status = 'pending' {$orgFilter}", $orgParams);
-    $quotationsSentResult = $db->fetch("SELECT COUNT(*) as count FROM quotations q JOIN service_requests sr ON q.request_id = sr.id {$orgJoin} WHERE q.status = 'sent' {$orgFilter}", $orgParams);
-    $approvedQuotationsResult = $db->fetch("SELECT COUNT(*) as count FROM quotations q JOIN service_requests sr ON q.request_id = sr.id {$orgJoin} WHERE q.status = 'approved' {$orgFilter}", $orgParams);
-    $completedRepairsResult = $db->fetch("SELECT COUNT(*) as count FROM service_requests sr {$orgJoin} WHERE sr.status = 'completed' {$orgFilter}", $orgParams);
-    $billsGeneratedResult = $db->fetch("SELECT COUNT(*) as count FROM quotations q JOIN service_requests sr ON q.request_id = sr.id {$orgJoin} WHERE q.status = 'approved' {$orgFilter}", $orgParams);
-
-    $stats = [
-        'pending_quotations' => $newQuotationRequestsResult ? $newQuotationRequestsResult['count'] : 0,
-        'sent_quotations' => $quotationsSentResult ? $quotationsSentResult['count'] : 0,
-        'approved_quotations' => $approvedQuotationsResult ? $approvedQuotationsResult['count'] : 0,
-        'completed_repairs' => $completedRepairsResult ? $completedRepairsResult['count'] : 0,
-        'bills_generated' => $billsGeneratedResult ? $billsGeneratedResult['count'] : 0,
-        'repairs_in_progress' => 0,
-        'payments_received' => 0,
-        'total_revenue' => 0,
-        'outstanding_amount' => 0
-    ];
-
-    // Get recent activities - filter by organization
-    $recentActivities = $db->fetchAll(
-        "SELECT sr.id, sr.problem_description, sr.status, sr.created_at,
-                v.registration_number, u.full_name as requestor_name,
-                'service_request' as activity_type
-         FROM service_requests sr
-         JOIN vehicles v ON sr.vehicle_id = v.id
-         JOIN users u ON sr.user_id = u.id
-         WHERE 1=1 {$orgFilter}
-         ORDER BY sr.created_at DESC
-         LIMIT 8",
-        $orgParams
-    );
-
-    $inventoryAlerts = [];
 }
 
 $pageTitle = 'Dashboard';
@@ -124,7 +71,7 @@ include '../includes/admin_head.php';
                     <div class="p-6">
                         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-8">
                             <!-- Pending Quotations -->
-                            <a href="<?php echo $useNewTables ? 'quotation_manager.php?status=pending' : 'quotations.php?status=pending'; ?>"
+                            <a href="quotation_manager.php?status=pending"
                                class="block bg-white rounded-lg p-6 border border-blue-100 hover:shadow-lg hover:border-blue-200 transition-all cursor-pointer">
                                 <div class="flex items-center gap-3 mb-2">
                                     <div class="w-8 h-8 rounded bg-amber-100 flex items-center justify-center">
@@ -136,7 +83,7 @@ include '../includes/admin_head.php';
                             </a>
 
                             <!-- Sent for Approval -->
-                            <a href="<?php echo $useNewTables ? 'quotation_manager.php?status=sent' : 'quotations.php?status=sent'; ?>"
+                            <a href="quotation_manager.php?status=sent"
                                class="block bg-white rounded-lg p-6 border border-blue-100 hover:shadow-lg hover:border-blue-200 transition-all cursor-pointer">
                                 <div class="flex items-center gap-3 mb-2">
                                     <div class="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
@@ -148,7 +95,7 @@ include '../includes/admin_head.php';
                             </a>
 
                             <!-- Approved Quotations -->
-                            <a href="<?php echo $useNewTables ? 'quotation_manager.php?status=approved' : 'quotations.php?status=approved'; ?>"
+                            <a href="quotation_manager.php?status=approved"
                                class="block bg-white rounded-lg p-6 border border-blue-100 hover:shadow-lg hover:border-blue-200 transition-all cursor-pointer">
                                 <div class="flex items-center gap-3 mb-2">
                                     <div class="w-8 h-8 rounded bg-green-100 flex items-center justify-center">
@@ -301,7 +248,7 @@ include '../includes/admin_head.php';
                             <div class="p-6 border-b border-blue-100">
                                 <div class="flex justify-between items-center">
                                     <h2 class="text-blue-900 text-xl font-semibold">Recent Activities</h2>
-                                    <a href="<?php echo $useNewTables ? 'quotation_manager.php' : 'requests.php'; ?>"
+                                    <a href="quotation_manager.php"
                                        class="text-blue-600 text-sm font-medium hover:text-blue-700">View All</a>
                                 </div>
                             </div>

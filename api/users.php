@@ -5,8 +5,6 @@ requireRole('admin');
 
 header('Content-Type: application/json');
 
-// Check if new system is available
-$GLOBALS['useNewTables'] = useNewDatabase();
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $action = $_GET['action'] ?? '';
@@ -41,7 +39,7 @@ switch ($action) {
 }
 
 function getUser() {
-    global $db, $useNewTables;
+    global $db;
 
     $user_id = (int)($_GET['id'] ?? 0);
 
@@ -51,17 +49,10 @@ function getUser() {
         return;
     }
 
-    if ($useNewTables) {
-        $user = $db->fetch(
-            "SELECT id, username, email, full_name, role, organization_id, is_active, created_at FROM users_new WHERE id = ?",
-            [$user_id]
-        );
-    } else {
-        $user = $db->fetch(
-            "SELECT id, username, email, full_name, role, organization_id, is_active, created_at FROM users WHERE id = ?",
-            [$user_id]
-        );
-    }
+    $user = $db->fetch(
+        "SELECT id, username, email, full_name, role, organization_id, is_active, created_at FROM users_new WHERE id = ?",
+        [$user_id]
+    );
 
     if (!$user) {
         http_response_code(404);

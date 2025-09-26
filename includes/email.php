@@ -63,7 +63,7 @@ class EmailService {
             'vehicle_registration' => $vehicleRegNo,
             'problem_description' => $problem,
             'requestor_name' => $requestorName,
-            'dashboard_url' => SITE_URL . '/dashboard/admin.php'
+            'dashboard_url' => SITE_URL . '/dashboard/admin_new.php'
         ]);
 
         return $this->sendEmail($this->from_email, $subject, $htmlBody);
