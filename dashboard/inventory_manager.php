@@ -3,582 +3,401 @@ require_once '../includes/functions.php';
 
 requireRole('admin'); // Only admins can access inventory management
 
+$pageTitle = 'Inventory Manager';
+
+// Handle AJAX requests
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    header('Content-Type: application/json');
+
+    switch ($_POST['action']) {
+        case 'add_item':
+            if (!verifyCSRFToken($_POST['csrf_token'])) {
+                echo json_encode(['success' => false, 'message' => 'Invalid security token']);
+                exit;
+            }
+
+            $name = sanitize($_POST['name']);
+            $base_price = floatval($_POST['base_price']);
+            $stock = floatval($_POST['stock']);
+
+            if (empty($name) || $base_price < 0 || $stock < 0) {
+                echo json_encode(['success' => false, 'message' => 'Please fill all fields with valid values']);
+                exit;
+            }
+
+            $result = $db->query(
+                "INSERT INTO inventory (organization_id, name, selling_price, current_stock, item_code, unit, is_active, created_at) VALUES (?, ?, ?, ?, ?, 'nos', 1, NOW())",
+                [$_SESSION['organization_id'], $name, $base_price, $stock, 'ITM' . time()]
+            );
+
+            if ($result) {
+                echo json_encode(['success' => true, 'message' => 'Item added successfully']);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Failed to add item']);
+            }
+            exit;
+
+        case 'edit_item':
+            if (!verifyCSRFToken($_POST['csrf_token'])) {
+                echo json_encode(['success' => false, 'message' => 'Invalid security token']);
+                exit;
+            }
+
+            $id = intval($_POST['id']);
+            $name = sanitize($_POST['name']);
+            $base_price = floatval($_POST['base_price']);
+            $stock = floatval($_POST['stock']);
+
+            if (empty($name) || $base_price < 0 || $stock < 0) {
+                echo json_encode(['success' => false, 'message' => 'Please fill all fields with valid values']);
+                exit;
+            }
+
+            $result = $db->query(
+                "UPDATE inventory SET name = ?, selling_price = ?, current_stock = ?, updated_at = NOW() WHERE id = ? AND organization_id = ?",
+                [$name, $base_price, $stock, $id, $_SESSION['organization_id']]
+            );
+
+            if ($result) {
+                echo json_encode(['success' => true, 'message' => 'Item updated successfully']);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Failed to update item']);
+            }
+            exit;
+
+        case 'delete_item':
+            if (!verifyCSRFToken($_POST['csrf_token'])) {
+                echo json_encode(['success' => false, 'message' => 'Invalid security token']);
+                exit;
+            }
+
+            $id = intval($_POST['id']);
+
+            $result = $db->query(
+                "DELETE FROM inventory WHERE id = ? AND organization_id = ?",
+                [$id, $_SESSION['organization_id']]
+            );
+
+            if ($result) {
+                echo json_encode(['success' => true, 'message' => 'Item deleted successfully']);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Failed to delete item']);
+            }
+            exit;
+
+        case 'get_item':
+            $id = intval($_POST['id']);
+            $item = $db->fetch(
+                "SELECT id, name, selling_price, current_stock FROM inventory WHERE id = ? AND organization_id = ? AND is_active = 1",
+                [$id, $_SESSION['organization_id']]
+            );
+
+            if ($item) {
+                echo json_encode(['success' => true, 'item' => $item]);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Item not found']);
+            }
+            exit;
+    }
+}
+
 // Get inventory statistics
 $stats = [
     'total_items' => $db->fetch("SELECT COUNT(*) as count FROM inventory WHERE organization_id = ? AND is_active = 1", [$_SESSION['organization_id']])['count'],
-    'low_stock' => $db->fetch("SELECT COUNT(*) as count FROM inventory WHERE organization_id = ? AND is_active = 1 AND available_stock <= reorder_level", [$_SESSION['organization_id']])['count'],
-    'out_of_stock' => $db->fetch("SELECT COUNT(*) as count FROM inventory WHERE organization_id = ? AND is_active = 1 AND available_stock <= 0", [$_SESSION['organization_id']])['count'],
-    'total_value' => $db->fetch("SELECT COALESCE(SUM(current_stock * average_cost), 0) as value FROM inventory WHERE organization_id = ? AND is_active = 1", [$_SESSION['organization_id']])['value']
+    'low_stock' => $db->fetch("SELECT COUNT(*) as count FROM inventory WHERE organization_id = ? AND is_active = 1 AND current_stock > 0 AND current_stock <= 10", [$_SESSION['organization_id']])['count'],
+    'out_of_stock' => $db->fetch("SELECT COUNT(*) as count FROM inventory WHERE organization_id = ? AND is_active = 1 AND current_stock <= 0", [$_SESSION['organization_id']])['count'],
+    'total_value' => $db->fetch("SELECT COALESCE(SUM(current_stock * selling_price), 0) as value FROM inventory WHERE organization_id = ? AND is_active = 1", [$_SESSION['organization_id']])['value']
 ];
 
-// Get inventory items with low stock alerts
-$low_stock_items = $db->fetchAll(
-    "SELECT i.*, c.name as category_name, s.name as supplier_name
-     FROM inventory i
-     LEFT JOIN inventory_categories c ON i.category_id = c.id
-     LEFT JOIN suppliers s ON i.supplier_id = s.id
-     WHERE i.organization_id = ? AND i.is_active = 1
-       AND i.available_stock <= i.reorder_level
-     ORDER BY (i.available_stock - i.reorder_level) ASC, i.name ASC
-     LIMIT 10",
-    [$_SESSION['organization_id']]
-);
-
-// Get recent inventory transactions
-$recent_transactions = $db->fetchAll(
-    "SELECT it.*, i.name as item_name, i.item_code, u.full_name as performed_by_name
-     FROM inventory_transactions it
-     JOIN inventory i ON it.inventory_item_id = i.id
-     JOIN users_new u ON it.performed_by = u.id
-     WHERE it.organization_id = ?
-     ORDER BY it.created_at DESC
-     LIMIT 20",
-    [$_SESSION['organization_id']]
-);
-
-// Get categories for dropdown
-$categories = $db->fetchAll(
-    "SELECT * FROM inventory_categories WHERE is_active = 1 ORDER BY name ASC"
-);
-
-// Get suppliers for dropdown
-$suppliers = $db->fetchAll(
-    "SELECT * FROM suppliers WHERE organization_id = ? AND is_active = 1 ORDER BY name ASC",
-    [$_SESSION['organization_id']]
-);
-
-// Get inventory items (limited for initial load)
+// Get inventory items
 $inventory_items = $db->fetchAll(
-    "SELECT i.*, c.name as category_name, s.name as supplier_name
-     FROM inventory i
-     LEFT JOIN inventory_categories c ON i.category_id = c.id
-     LEFT JOIN suppliers s ON i.supplier_id = s.id
-     WHERE i.organization_id = ? AND i.is_active = 1
-     ORDER BY i.name ASC
-     LIMIT 50",
+    "SELECT id, name, selling_price, current_stock, item_code, created_at
+     FROM inventory
+     WHERE organization_id = ? AND is_active = 1
+     ORDER BY name ASC",
     [$_SESSION['organization_id']]
 );
 ?>
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inventory Manager - <?php echo APP_NAME; ?></title>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-    <link href="../assets/css/material.css" rel="stylesheet">
-    <link href="../assets/css/style-base.css" rel="stylesheet">
-    <style>
-        .inventory-grid {
-            display: grid;
-            grid-template-columns: 1fr 300px;
-            gap: 20px;
-            margin-top: 20px;
-        }
+<?php include '../includes/admin_head.php'; ?>
 
-        .inventory-item {
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            padding: 16px;
-            margin-bottom: 12px;
-            transition: box-shadow 0.3s ease;
-        }
-        .inventory-item:hover {
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        }
+                <?php include '../includes/admin_sidebar_new.php'; ?>
 
-        .item-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 12px;
-        }
-        .item-code {
-            background: #e3f2fd;
-            color: #1565c0;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        .item-name {
-            font-size: 16px;
-            font-weight: 600;
-            margin-bottom: 4px;
-        }
-        .item-category {
-            color: #666;
-            font-size: 12px;
-        }
+                <!-- Main content area -->
+                <div class="flex-1 overflow-y-auto">
+                    <?php include '../includes/admin_header.php'; ?>
 
-        .stock-info {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 12px;
-            margin: 12px 0;
-            padding: 12px;
-            background: #f8f9fa;
-            border-radius: 6px;
-        }
-        .stock-metric {
-            text-align: center;
-        }
-        .stock-value {
-            font-size: 18px;
-            font-weight: 600;
-            margin-bottom: 2px;
-        }
-        .stock-label {
-            font-size: 11px;
-            color: #666;
-            text-transform: uppercase;
-        }
+                    <!-- Main content -->
+                    <div class="p-6">
+                        <!-- Header section -->
+                        <div class="flex items-center justify-between mb-6">
+                            <div>
+                                <h1 class="text-2xl font-bold text-blue-900">Inventory Manager</h1>
+                                <p class="text-blue-600 text-sm mt-1">Manage your inventory items with ease</p>
+                            </div>
+                            <button onclick="showAddItemModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
+                                <span class="material-icons text-sm">add</span>
+                                Add Item
+                            </button>
+                        </div>
 
-        .low-stock { color: #f57c00; }
-        .out-of-stock { color: #d32f2f; }
-        .in-stock { color: #388e3c; }
-
-        .item-actions {
-            display: flex;
-            gap: 6px;
-            flex-wrap: wrap;
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        .stat-card {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            text-align: center;
-        }
-        .stat-number {
-            font-size: 28px;
-            font-weight: 700;
-            margin-bottom: 8px;
-        }
-        .stat-label {
-            color: #666;
-            text-transform: uppercase;
-            font-size: 12px;
-            font-weight: 500;
-        }
-
-        .alert-card {
-            background: #fff8e1;
-            border-left: 4px solid #ff9800;
-            padding: 16px;
-            margin-bottom: 20px;
-            border-radius: 0 8px 8px 0;
-        }
-        .alert-title {
-            font-weight: 600;
-            color: #ef6c00;
-            margin-bottom: 8px;
-        }
-
-        .sidebar {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-        .sidebar-section {
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            padding: 20px;
-        }
-        .sidebar-title {
-            font-weight: 600;
-            margin-bottom: 16px;
-            color: #333;
-        }
-
-        .transaction-item {
-            padding: 12px 0;
-            border-bottom: 1px solid #e0e0e0;
-        }
-        .transaction-item:last-child {
-            border-bottom: none;
-        }
-        .transaction-type {
-            font-size: 12px;
-            padding: 2px 6px;
-            border-radius: 3px;
-            text-transform: uppercase;
-        }
-        .type-purchase { background: #e8f5e8; color: #2e7d32; }
-        .type-consumption { background: #ffebee; color: #c62828; }
-        .type-adjustment { background: #e3f2fd; color: #1565c0; }
-        .type-allocation { background: #fff3e0; color: #ef6c00; }
-
-        .filters {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
-        .filter-row {
-            display: flex;
-            gap: 16px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-
-        .btn-sm {
-            padding: 6px 12px;
-            font-size: 12px;
-            border-radius: 4px;
-            border: none;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-        .btn-primary { background: #1976d2; color: white; }
-        .btn-success { background: #388e3c; color: white; }
-        .btn-warning { background: #f57c00; color: white; }
-        .btn-info { background: #0288d1; color: white; }
-        .btn-secondary { background: #6c757d; color: white; }
-
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0,0,0,0.5);
-        }
-        .modal-content {
-            background-color: white;
-            margin: 5% auto;
-            padding: 30px;
-            border-radius: 8px;
-            width: 90%;
-            max-width: 600px;
-            max-height: 80vh;
-            overflow-y: auto;
-        }
-        .form-group {
-            margin-bottom: 20px;
-        }
-        .form-label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: 500;
-        }
-        .form-control {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 14px;
-        }
-        .form-control:focus {
-            outline: none;
-            border-color: #1976d2;
-            box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2);
-        }
-        .close {
-            color: #aaa;
-            float: right;
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-            line-height: 1;
-        }
-        .close:hover {
-            color: black;
-        }
-
-        @media (max-width: 768px) {
-            .inventory-grid {
-                grid-template-columns: 1fr;
-            }
-            .filter-row {
-                flex-direction: column;
-                align-items: stretch;
-            }
-            .stock-info {
-                grid-template-columns: repeat(2, 1fr);
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="dashboard-layout">
-        <!-- Header -->
-        <header class="dashboard-header">
-            <div class="header-content">
-                <h1>Inventory Manager</h1>
-                <div class="header-actions">
-                    <button class="btn btn-primary" onclick="showAddItemModal()">
-                        <i class="material-icons">add</i> Add Item
-                    </button>
-                    <button class="btn btn-success" onclick="showAddStockModal()">
-                        <i class="material-icons">add_box</i> Add Stock
-                    </button>
-                    <a href="quotation_manager.php" class="btn btn-outline">Back to Quotations</a>
-                </div>
-            </div>
-        </header>
-
-        <!-- Stats Dashboard -->
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-number" style="color: #1976d2;"><?php echo $stats['total_items']; ?></div>
-                <div class="stat-label">Total Items</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number" style="color: #f57c00;"><?php echo $stats['low_stock']; ?></div>
-                <div class="stat-label">Low Stock</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number" style="color: #d32f2f;"><?php echo $stats['out_of_stock']; ?></div>
-                <div class="stat-label">Out of Stock</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number" style="color: #388e3c;"><?php echo formatCurrency($stats['total_value']); ?></div>
-                <div class="stat-label">Total Value</div>
-            </div>
-        </div>
-
-        <!-- Low Stock Alert -->
-        <?php if ($stats['low_stock'] > 0): ?>
-        <div class="alert-card">
-            <div class="alert-title">
-                <i class="material-icons" style="vertical-align: middle; margin-right: 8px;">warning</i>
-                Low Stock Alert
-            </div>
-            <div>You have <?php echo $stats['low_stock']; ?> items running low on stock. Check the sidebar for details.</div>
-        </div>
-        <?php endif; ?>
-
-        <!-- Filters -->
-        <div class="filters">
-            <div class="filter-row">
-                <select id="categoryFilter" class="form-control" onchange="filterItems()" style="max-width: 200px;">
-                    <option value="">All Categories</option>
-                    <?php foreach ($categories as $category): ?>
-                        <option value="<?php echo $category['id']; ?>"><?php echo htmlspecialchars($category['name']); ?></option>
-                    <?php endforeach; ?>
-                </select>
-                <select id="stockFilter" class="form-control" onchange="filterItems()" style="max-width: 200px;">
-                    <option value="">All Stock Levels</option>
-                    <option value="in_stock">In Stock</option>
-                    <option value="low_stock">Low Stock</option>
-                    <option value="out_of_stock">Out of Stock</option>
-                </select>
-                <input type="text" id="searchFilter" class="form-control" placeholder="Search items..." onkeyup="filterItems()" style="max-width: 300px;">
-                <button class="btn btn-secondary" onclick="clearFilters()">Clear</button>
-                <button class="btn btn-info" onclick="refreshInventory()">
-                    <i class="material-icons">refresh</i> Refresh
-                </button>
-            </div>
-        </div>
-
-        <!-- Main Content -->
-        <div class="inventory-grid">
-            <!-- Inventory Items -->
-            <div class="inventory-section">
-                <h2>Inventory Items <span class="count">(<?php echo count($inventory_items); ?>)</span></h2>
-                <div id="inventory-container">
-                    <?php foreach ($inventory_items as $item): ?>
-                        <?php
-                        $stock_class = 'in-stock';
-                        $stock_status = 'In Stock';
-                        if ($item['available_stock'] <= 0) {
-                            $stock_class = 'out-of-stock';
-                            $stock_status = 'Out of Stock';
-                        } elseif ($item['available_stock'] <= $item['reorder_level']) {
-                            $stock_class = 'low-stock';
-                            $stock_status = 'Low Stock';
-                        }
-                        ?>
-                        <div class="inventory-item"
-                             data-category="<?php echo $item['category_id']; ?>"
-                             data-stock="<?php echo $stock_status === 'In Stock' ? 'in_stock' : ($stock_status === 'Low Stock' ? 'low_stock' : 'out_of_stock'); ?>"
-                             data-search="<?php echo htmlspecialchars(strtolower($item['name'] . ' ' . $item['item_code'] . ' ' . $item['description'])); ?>">
-
-                            <div class="item-header">
-                                <div>
-                                    <div class="item-name"><?php echo htmlspecialchars($item['name']); ?></div>
-                                    <div class="item-category">
-                                        <?php echo htmlspecialchars($item['category_name'] ?: 'Uncategorized'); ?>
-                                        <?php if ($item['supplier_name']): ?>
-                                            • Supplier: <?php echo htmlspecialchars($item['supplier_name']); ?>
-                                        <?php endif; ?>
+                        <!-- Stats Cards -->
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+                            <div class="bg-white rounded-lg border border-blue-100 p-6">
+                                <div class="flex items-center">
+                                    <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                                        <span class="material-icons text-blue-600">inventory</span>
+                                    </div>
+                                    <div class="ml-4">
+                                        <p class="text-blue-900 text-2xl font-bold"><?php echo $stats['total_items']; ?></p>
+                                        <p class="text-blue-600 text-sm">Total Items</p>
                                     </div>
                                 </div>
-                                <div class="item-code"><?php echo htmlspecialchars($item['item_code']); ?></div>
                             </div>
+                            <div class="bg-white rounded-lg border border-blue-100 p-6">
+                                <div class="flex items-center">
+                                    <div class="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                                        <span class="material-icons text-orange-600">warning</span>
+                                    </div>
+                                    <div class="ml-4">
+                                        <p class="text-blue-900 text-2xl font-bold"><?php echo $stats['low_stock']; ?></p>
+                                        <p class="text-blue-600 text-sm">Low Stock</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="bg-white rounded-lg border border-blue-100 p-6">
+                                <div class="flex items-center">
+                                    <div class="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
+                                        <span class="material-icons text-red-600">error</span>
+                                    </div>
+                                    <div class="ml-4">
+                                        <p class="text-blue-900 text-2xl font-bold"><?php echo $stats['out_of_stock']; ?></p>
+                                        <p class="text-blue-600 text-sm">Out of Stock</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="bg-white rounded-lg border border-blue-100 p-6">
+                                <div class="flex items-center">
+                                    <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                                        <span class="material-icons text-green-600">monetization_on</span>
+                                    </div>
+                                    <div class="ml-4">
+                                        <p class="text-blue-900 text-2xl font-bold"><?php echo formatCurrency($stats['total_value']); ?></p>
+                                        <p class="text-blue-600 text-sm">Total Value</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
 
-                            <?php if ($item['description']): ?>
-                                <div style="margin-bottom: 12px; color: #666; font-size: 14px;">
-                                    <?php echo htmlspecialchars($item['description']); ?>
+                        <!-- Search and Filter -->
+                        <div class="bg-white rounded-lg border border-blue-100 p-4 mb-6">
+                            <div class="flex flex-wrap gap-4 items-center">
+                                <input type="text" id="searchFilter" placeholder="Search items..." class="flex-1 min-w-64 px-4 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" onkeyup="filterItems()">
+                                <button onclick="clearFilters()" class="px-4 py-2 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors">
+                                    Clear
+                                </button>
+                                <button onclick="refreshInventory()" class="px-4 py-2 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors flex items-center gap-2">
+                                    <span class="material-icons text-sm">refresh</span>
+                                    Refresh
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Inventory Items Grid -->
+                        <div id="inventory-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            <?php foreach ($inventory_items as $item): ?>
+                                <?php
+                                $stock_class = 'text-green-600';
+                                $stock_status = 'In Stock';
+                                if ($item['current_stock'] <= 0) {
+                                    $stock_class = 'text-red-600';
+                                    $stock_status = 'Out of Stock';
+                                } elseif ($item['current_stock'] <= 10) {
+                                    $stock_class = 'text-orange-600';
+                                    $stock_status = 'Low Stock';
+                                }
+                                ?>
+                                <div class="bg-white rounded-lg border border-blue-100 p-6 hover:shadow-md transition-shadow"
+                                     data-search="<?php echo htmlspecialchars(strtolower($item['name'] . ' ' . $item['item_code'])); ?>">
+
+                                    <!-- Item Header -->
+                                    <div class="flex justify-between items-start mb-4">
+                                        <div class="flex-1">
+                                            <h3 class="text-lg font-semibold text-blue-900 mb-1"><?php echo htmlspecialchars($item['name']); ?></h3>
+                                            <p class="text-blue-600 text-sm"><?php echo htmlspecialchars($item['item_code']); ?></p>
+                                        </div>
+                                    </div>
+
+                                    <!-- Stock Info -->
+                                    <div class="grid grid-cols-2 gap-4 mb-4">
+                                        <div>
+                                            <p class="text-blue-600 text-sm">Stock</p>
+                                            <p class="text-xl font-bold <?php echo $stock_class; ?>"><?php echo number_format($item['current_stock'], 0); ?></p>
+                                        </div>
+                                        <div>
+                                            <p class="text-blue-600 text-sm">Base Price</p>
+                                            <p class="text-xl font-bold text-blue-900"><?php echo formatCurrency($item['selling_price']); ?></p>
+                                        </div>
+                                    </div>
+
+                                    <!-- Status Badge -->
+                                    <div class="mb-4">
+                                        <span class="px-2 py-1 text-xs font-medium rounded-full <?php echo $item['current_stock'] <= 0 ? 'bg-red-100 text-red-800' : ($item['current_stock'] <= 10 ? 'bg-orange-100 text-orange-800' : 'bg-green-100 text-green-800'); ?>">
+                                            <?php echo $stock_status; ?>
+                                        </span>
+                                    </div>
+
+                                    <!-- Actions -->
+                                    <div class="flex gap-2">
+                                        <button onclick="editItem(<?php echo $item['id']; ?>)" class="flex-1 px-3 py-2 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors text-sm flex items-center justify-center gap-1">
+                                            <span class="material-icons text-sm">edit</span>
+                                            Edit
+                                        </button>
+                                        <button onclick="deleteItem(<?php echo $item['id']; ?>)" class="px-3 py-2 text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors text-sm flex items-center justify-center">
+                                            <span class="material-icons text-sm">delete</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+
+                            <?php if (empty($inventory_items)): ?>
+                                <div class="col-span-full text-center py-12">
+                                    <div class="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                        <span class="material-icons text-blue-600 text-4xl">inventory</span>
+                                    </div>
+                                    <h3 class="text-lg font-medium text-blue-900 mb-2">No inventory items found</h3>
+                                    <p class="text-blue-600 mb-4">Add your first inventory item to get started with stock management.</p>
+                                    <button onclick="showAddItemModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors">
+                                        Add Your First Item
+                                    </button>
                                 </div>
                             <?php endif; ?>
-
-                            <div class="stock-info">
-                                <div class="stock-metric">
-                                    <div class="stock-value <?php echo $stock_class; ?>">
-                                        <?php echo number_format($item['available_stock'], 2); ?>
-                                    </div>
-                                    <div class="stock-label">Available</div>
-                                </div>
-                                <div class="stock-metric">
-                                    <div class="stock-value">
-                                        <?php echo number_format($item['allocated_stock'], 2); ?>
-                                    </div>
-                                    <div class="stock-label">Allocated</div>
-                                </div>
-                                <div class="stock-metric">
-                                    <div class="stock-value">
-                                        <?php echo number_format($item['current_stock'], 2); ?>
-                                    </div>
-                                    <div class="stock-label">Total</div>
-                                </div>
-                            </div>
-
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin: 12px 0; font-size: 12px;">
-                                <span>Unit: <?php echo htmlspecialchars($item['unit']); ?></span>
-                                <span>Reorder Level: <?php echo number_format($item['reorder_level'], 2); ?></span>
-                                <?php if ($item['selling_price'] > 0): ?>
-                                    <span>Price: <?php echo formatCurrency($item['selling_price']); ?></span>
-                                <?php endif; ?>
-                            </div>
-
-                            <div class="item-actions">
-                                <button class="btn-sm btn-primary" onclick="editItem(<?php echo $item['id']; ?>)">
-                                    <i class="material-icons">edit</i> Edit
-                                </button>
-                                <button class="btn-sm btn-success" onclick="addStockToItem(<?php echo $item['id']; ?>)">
-                                    <i class="material-icons">add</i> Add Stock
-                                </button>
-                                <button class="btn-sm btn-warning" onclick="adjustStock(<?php echo $item['id']; ?>)">
-                                    <i class="material-icons">tune</i> Adjust
-                                </button>
-                                <button class="btn-sm btn-info" onclick="viewHistory(<?php echo $item['id']; ?>)">
-                                    <i class="material-icons">history</i> History
-                                </button>
-                            </div>
                         </div>
-                    <?php endforeach; ?>
-
-                    <?php if (empty($inventory_items)): ?>
-                        <div style="text-align: center; padding: 60px 20px; color: #666;">
-                            <i class="material-icons" style="font-size: 64px; margin-bottom: 20px;">inventory</i>
-                            <h3>No inventory items found</h3>
-                            <p>Add your first inventory item to get started with stock management.</p>
-                        </div>
-                    <?php endif; ?>
+                    </div>
                 </div>
             </div>
+        </div>
 
-            <!-- Sidebar -->
-            <div class="sidebar">
-                <!-- Low Stock Items -->
-                <?php if (!empty($low_stock_items)): ?>
-                <div class="sidebar-section">
-                    <div class="sidebar-title">
-                        <i class="material-icons" style="vertical-align: middle; margin-right: 8px; color: #f57c00;">warning</i>
-                        Low Stock Items
-                    </div>
-                    <?php foreach ($low_stock_items as $item): ?>
-                        <div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e0e0e0;">
-                            <div style="font-weight: 500; margin-bottom: 4px;">
-                                <?php echo htmlspecialchars($item['name']); ?>
-                            </div>
-                            <div style="font-size: 12px; color: #666;">
-                                Available: <span class="<?php echo $item['available_stock'] <= 0 ? 'out-of-stock' : 'low-stock'; ?>">
-                                    <?php echo number_format($item['available_stock'], 2); ?>
-                                </span>
-                                / Reorder: <?php echo number_format($item['reorder_level'], 2); ?>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
+    <!-- Modals -->
+    <div id="addItemModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg w-full max-w-md">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-semibold text-blue-900">Add New Item</h3>
+                    <button onclick="closeAddItemModal()" class="text-blue-400 hover:text-blue-600">
+                        <span class="material-icons">close</span>
+                    </button>
                 </div>
-                <?php endif; ?>
-
-                <!-- Recent Transactions -->
-                <div class="sidebar-section">
-                    <div class="sidebar-title">
-                        <i class="material-icons" style="vertical-align: middle; margin-right: 8px;">history</i>
-                        Recent Transactions
-                    </div>
-                    <?php foreach (array_slice($recent_transactions, 0, 10) as $transaction): ?>
-                        <div class="transaction-item">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                                <span class="transaction-type type-<?php echo $transaction['transaction_type']; ?>">
-                                    <?php echo ucfirst($transaction['transaction_type']); ?>
-                                </span>
-                                <span style="font-size: 11px; color: #666;">
-                                    <?php echo formatDate($transaction['created_at'], 'd/m H:i'); ?>
-                                </span>
-                            </div>
-                            <div style="font-weight: 500; font-size: 13px; margin-bottom: 2px;">
-                                <?php echo htmlspecialchars($transaction['item_name']); ?>
-                            </div>
-                            <div style="font-size: 12px; color: #666;">
-                                <?php echo number_format(abs($transaction['quantity']), 2); ?> units
-                                • <?php echo htmlspecialchars($transaction['performed_by_name']); ?>
-                            </div>
+                <form id="addItemForm">
+                    <?php echo csrfField(); ?>
+                    <div class="space-y-4">
+                        <div>
+                            <label for="itemName" class="block text-sm font-medium text-blue-900 mb-1">Item Name *</label>
+                            <input type="text" id="itemName" name="name" required class="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                         </div>
-                    <?php endforeach; ?>
-                </div>
-
-                <!-- Quick Actions -->
-                <div class="sidebar-section">
-                    <div class="sidebar-title">Quick Actions</div>
-                    <div style="display: flex; flex-direction: column; gap: 8px;">
-                        <button class="btn btn-primary btn-sm" onclick="showAddCategoryModal()">
-                            <i class="material-icons">category</i> Add Category
+                        <div>
+                            <label for="basePrice" class="block text-sm font-medium text-blue-900 mb-1">Base Price *</label>
+                            <input type="number" id="basePrice" name="base_price" step="0.01" min="0" required class="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label for="stock" class="block text-sm font-medium text-blue-900 mb-1">Stock Quantity *</label>
+                            <input type="number" id="stock" name="stock" min="0" required class="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                    </div>
+                    <div class="flex gap-3 mt-6">
+                        <button type="button" onclick="closeAddItemModal()" class="flex-1 px-4 py-2 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors">
+                            Cancel
                         </button>
-                        <button class="btn btn-success btn-sm" onclick="showAddSupplierModal()">
-                            <i class="material-icons">business</i> Add Supplier
-                        </button>
-                        <button class="btn btn-warning btn-sm" onclick="generateLowStockReport()">
-                            <i class="material-icons">report</i> Low Stock Report
-                        </button>
-                        <button class="btn btn-info btn-sm" onclick="exportInventory()">
-                            <i class="material-icons">file_download</i> Export Inventory
+                        <button type="submit" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                            Add Item
                         </button>
                     </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Item Modal -->
+    <div id="editItemModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg w-full max-w-md">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-semibold text-blue-900">Edit Item</h3>
+                    <button onclick="closeEditItemModal()" class="text-blue-400 hover:text-blue-600">
+                        <span class="material-icons">close</span>
+                    </button>
+                </div>
+                <form id="editItemForm">
+                    <?php echo csrfField(); ?>
+                    <input type="hidden" id="editItemId" name="id">
+                    <div class="space-y-4">
+                        <div>
+                            <label for="editItemName" class="block text-sm font-medium text-blue-900 mb-1">Item Name *</label>
+                            <input type="text" id="editItemName" name="name" required class="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label for="editBasePrice" class="block text-sm font-medium text-blue-900 mb-1">Base Price *</label>
+                            <input type="number" id="editBasePrice" name="base_price" step="0.01" min="0" required class="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label for="editStock" class="block text-sm font-medium text-blue-900 mb-1">Stock Quantity *</label>
+                            <input type="number" id="editStock" name="stock" min="0" required class="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                    </div>
+                    <div class="flex gap-3 mt-6">
+                        <button type="button" onclick="closeEditItemModal()" class="flex-1 px-4 py-2 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors">
+                            Cancel
+                        </button>
+                        <button type="submit" class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                            Update Item
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="deleteItemModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg w-full max-w-md">
+            <div class="p-6">
+                <div class="flex items-center mb-4">
+                    <div class="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mr-4">
+                        <span class="material-icons text-red-600">warning</span>
+                    </div>
+                    <h3 class="text-lg font-semibold text-blue-900">Delete Item</h3>
+                </div>
+                <p class="text-blue-600 mb-6">Are you sure you want to delete this item? This action cannot be undone.</p>
+                <div class="flex gap-3">
+                    <button onclick="closeDeleteItemModal()" class="flex-1 px-4 py-2 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors">
+                        Cancel
+                    </button>
+                    <button onclick="confirmDeleteItem()" class="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
+                        Delete
+                    </button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Modals will be loaded here -->
-    <div id="modal-container"></div>
+    <!-- Notification -->
+    <div id="notification" class="fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg hidden z-50">
+        <span id="notificationMessage"></span>
+    </div>
 
-    <script src="../assets/js/inventory-manager.js"></script>
     <script>
+        let deleteItemId = null;
+
+        // Filter functionality
         function filterItems() {
-            const categoryFilter = document.getElementById('categoryFilter').value;
-            const stockFilter = document.getElementById('stockFilter').value;
             const searchFilter = document.getElementById('searchFilter').value.toLowerCase();
-            const items = document.querySelectorAll('.inventory-item');
+            const items = document.querySelectorAll('[data-search]');
 
             items.forEach(item => {
-                const category = item.getAttribute('data-category');
-                const stock = item.getAttribute('data-stock');
                 const searchText = item.getAttribute('data-search');
-
-                const categoryMatch = !categoryFilter || category === categoryFilter;
-                const stockMatch = !stockFilter || stock === stockFilter;
                 const searchMatch = !searchFilter || searchText.includes(searchFilter);
 
-                if (categoryMatch && stockMatch && searchMatch) {
+                if (searchMatch) {
                     item.style.display = 'block';
                 } else {
                     item.style.display = 'none';
@@ -587,8 +406,6 @@ $inventory_items = $db->fetchAll(
         }
 
         function clearFilters() {
-            document.getElementById('categoryFilter').value = '';
-            document.getElementById('stockFilter').value = '';
             document.getElementById('searchFilter').value = '';
             filterItems();
         }
@@ -597,46 +414,156 @@ $inventory_items = $db->fetchAll(
             window.location.reload();
         }
 
-        // Placeholder functions for modals (to be implemented)
+        // Modal functions
         function showAddItemModal() {
-            console.log('Show add item modal');
+            document.getElementById('addItemModal').classList.remove('hidden');
         }
 
-        function showAddStockModal() {
-            console.log('Show add stock modal');
+        function closeAddItemModal() {
+            document.getElementById('addItemModal').classList.add('hidden');
+            document.getElementById('addItemForm').reset();
+        }
+
+        function showEditItemModal() {
+            document.getElementById('editItemModal').classList.remove('hidden');
+        }
+
+        function closeEditItemModal() {
+            document.getElementById('editItemModal').classList.add('hidden');
+            document.getElementById('editItemForm').reset();
+        }
+
+        function showDeleteItemModal() {
+            document.getElementById('deleteItemModal').classList.remove('hidden');
+        }
+
+        function closeDeleteItemModal() {
+            document.getElementById('deleteItemModal').classList.add('hidden');
+            deleteItemId = null;
+        }
+
+        function showNotification(message, type = 'success') {
+            const notification = document.getElementById('notification');
+            const messageElement = document.getElementById('notificationMessage');
+
+            messageElement.textContent = message;
+            notification.className = `fixed top-4 right-4 px-4 py-2 rounded-lg shadow-lg z-50 ${
+                type === 'success' ? 'bg-green-600' : 'bg-red-600'
+            } text-white`;
+            notification.classList.remove('hidden');
+
+            setTimeout(() => {
+                notification.classList.add('hidden');
+            }, 3000);
+        }
+
+        // AJAX functions
+        function submitForm(form, action) {
+            const formData = new FormData(form);
+            formData.append('action', action);
+
+            fetch('', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showNotification(data.message, 'success');
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    showNotification(data.message, 'error');
+                }
+            })
+            .catch(error => {
+                showNotification('An error occurred. Please try again.', 'error');
+            });
         }
 
         function editItem(id) {
-            console.log('Edit item:', id);
+            const formData = new FormData();
+            formData.append('action', 'get_item');
+            formData.append('id', id);
+
+            fetch('', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('editItemId').value = data.item.id;
+                    document.getElementById('editItemName').value = data.item.name;
+                    document.getElementById('editBasePrice').value = data.item.selling_price;
+                    document.getElementById('editStock').value = data.item.current_stock;
+                    showEditItemModal();
+                } else {
+                    showNotification(data.message, 'error');
+                }
+            })
+            .catch(error => {
+                showNotification('An error occurred. Please try again.', 'error');
+            });
         }
 
-        function addStockToItem(id) {
-            console.log('Add stock to item:', id);
+        function deleteItem(id) {
+            deleteItemId = id;
+            showDeleteItemModal();
         }
 
-        function adjustStock(id) {
-            console.log('Adjust stock for item:', id);
+        function confirmDeleteItem() {
+            if (!deleteItemId) return;
+
+            const formData = new FormData();
+            formData.append('action', 'delete_item');
+            formData.append('id', deleteItemId);
+            formData.append('csrf_token', document.querySelector('input[name="csrf_token"]').value);
+
+            fetch('', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                closeDeleteItemModal();
+                if (data.success) {
+                    showNotification(data.message, 'success');
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    showNotification(data.message, 'error');
+                }
+            })
+            .catch(error => {
+                closeDeleteItemModal();
+                showNotification('An error occurred. Please try again.', 'error');
+            });
         }
 
-        function viewHistory(id) {
-            console.log('View history for item:', id);
-        }
+        // Form submissions
+        document.getElementById('addItemForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            submitForm(this, 'add_item');
+            closeAddItemModal();
+        });
 
-        function showAddCategoryModal() {
-            console.log('Show add category modal');
-        }
+        document.getElementById('editItemForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            submitForm(this, 'edit_item');
+            closeEditItemModal();
+        });
 
-        function showAddSupplierModal() {
-            console.log('Show add supplier modal');
-        }
-
-        function generateLowStockReport() {
-            console.log('Generate low stock report');
-        }
-
-        function exportInventory() {
-            console.log('Export inventory');
-        }
+        // Close modals when clicking outside
+        document.querySelectorAll('[id$="Modal"]').forEach(modal => {
+            modal.addEventListener('click', function(e) {
+                if (e.target === this) {
+                    this.classList.add('hidden');
+                }
+            });
+        });
     </script>
 </body>
 </html>

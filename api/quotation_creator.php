@@ -195,28 +195,80 @@ function createDetailedQuotation() {
 
         $quotation_id = $request_id;
 
-        // Insert quotation items (only if quotation_items table exists)
+        // Process inventory stock deduction and insert quotation items
         if (!empty($items) && $hasNewColumns) {
             // Check if quotation_items table exists
             $tables = $db->fetchAll("SHOW TABLES LIKE 'quotation_items_new'");
             if (!empty($tables)) {
+                // First pass: Validate stock for all inventory items
+                $stockValidationErrors = [];
+                foreach ($items as $item) {
+                    $item_type = sanitize($item['type'] ?? '');
+                    $inventory_item_id = (int)($item['inventory_item_id'] ?? 0);
+                    $quantity = (float)($item['quantity'] ?? 1);
+
+                    if (($item_type === 'parts' || $item_type === 'part') && $inventory_item_id > 0) {
+                        $inventoryItem = $db->fetch(
+                            "SELECT id, name, current_stock FROM inventory
+                             WHERE id = ? AND organization_id = ? AND is_active = 1",
+                            [$inventory_item_id, $_SESSION['organization_id']]
+                        );
+
+                        if (!$inventoryItem) {
+                            $stockValidationErrors[] = "Inventory item not found: {$item['description']}";
+                        } elseif ($inventoryItem['current_stock'] < $quantity) {
+                            $stockValidationErrors[] = "Insufficient stock for {$inventoryItem['name']}. Available: {$inventoryItem['current_stock']}, Requested: {$quantity}";
+                        }
+                    }
+                }
+
+                // If there are stock validation errors, throw exception
+                if (!empty($stockValidationErrors)) {
+                    throw new Exception('Stock validation failed: ' . implode('; ', $stockValidationErrors));
+                }
+
+                // Second pass: Insert quotation items and deduct stock
                 foreach ($items as $item) {
                     $item_type = sanitize($item['type'] ?? '');
                     $description = sanitize($item['description'] ?? '');
                     $quantity = (float)($item['quantity'] ?? 1);
                     $rate = (float)($item['rate'] ?? 0);
                     $amount = (float)($item['amount'] ?? 0);
+                    $inventory_item_id = (int)($item['inventory_item_id'] ?? 0);
 
                     if (!empty($description) && $rate > 0) {
                         // Map old item types to new schema
                         $mappedItemType = ($item_type === 'base_service') ? 'service' :
                                          (($item_type === 'parts') ? 'part' : 'misc');
 
-                        $db->query(
-                            "INSERT INTO quotation_items_new (quotation_id, item_type, description, quantity, rate, amount)
-                             VALUES (?, ?, ?, ?, ?, ?)",
-                            [$quotation_id, $mappedItemType, $description, $quantity, $rate, $amount]
-                        );
+                        // Insert quotation item with inventory_item_id if available
+                        if ($inventory_item_id > 0) {
+                            $db->query(
+                                "INSERT INTO quotation_items_new (quotation_id, inventory_item_id, item_type, description, quantity, rate, amount)
+                                 VALUES (?, ?, ?, ?, ?, ?, ?)",
+                                [$quotation_id, $inventory_item_id, $mappedItemType, $description, $quantity, $rate, $amount]
+                            );
+                        } else {
+                            $db->query(
+                                "INSERT INTO quotation_items_new (quotation_id, item_type, description, quantity, rate, amount)
+                                 VALUES (?, ?, ?, ?, ?, ?)",
+                                [$quotation_id, $mappedItemType, $description, $quantity, $rate, $amount]
+                            );
+                        }
+
+                        // Deduct stock for inventory items
+                        if (($item_type === 'parts' || $item_type === 'part') && $inventory_item_id > 0) {
+                            $result = $db->query(
+                                "UPDATE inventory
+                                 SET current_stock = current_stock - ?, updated_at = NOW()
+                                 WHERE id = ? AND organization_id = ?",
+                                [$quantity, $inventory_item_id, $_SESSION['organization_id']]
+                            );
+
+                            if (!$result) {
+                                throw new Exception("Failed to update stock for item: {$description}");
+                            }
+                        }
                     }
                 }
             }
@@ -360,27 +412,79 @@ function createStandaloneQuotation() {
 
         $quotation_id = $db->lastInsertId();
 
-        // Insert quotation items (if applicable)
+        // Process inventory stock deduction and insert quotation items
         if (!empty($items)) {
             $tables = $db->fetchAll("SHOW TABLES LIKE 'quotation_items_new'");
             if (!empty($tables)) {
+                // First pass: Validate stock for all inventory items
+                $stockValidationErrors = [];
+                foreach ($items as $item) {
+                    $item_type = sanitize($item['type'] ?? '');
+                    $inventory_item_id = (int)($item['inventory_item_id'] ?? 0);
+                    $quantity = (float)($item['quantity'] ?? 1);
+
+                    if (($item_type === 'parts' || $item_type === 'part') && $inventory_item_id > 0) {
+                        $inventoryItem = $db->fetch(
+                            "SELECT id, name, current_stock FROM inventory
+                             WHERE id = ? AND organization_id = ? AND is_active = 1",
+                            [$inventory_item_id, $_SESSION['organization_id']]
+                        );
+
+                        if (!$inventoryItem) {
+                            $stockValidationErrors[] = "Inventory item not found: {$item['description']}";
+                        } elseif ($inventoryItem['current_stock'] < $quantity) {
+                            $stockValidationErrors[] = "Insufficient stock for {$inventoryItem['name']}. Available: {$inventoryItem['current_stock']}, Requested: {$quantity}";
+                        }
+                    }
+                }
+
+                // If there are stock validation errors, throw exception
+                if (!empty($stockValidationErrors)) {
+                    throw new Exception('Stock validation failed: ' . implode('; ', $stockValidationErrors));
+                }
+
+                // Second pass: Insert quotation items and deduct stock
                 foreach ($items as $item) {
                     $item_type = sanitize($item['type'] ?? '');
                     $description = sanitize($item['description'] ?? '');
                     $quantity = (float)($item['quantity'] ?? 1);
                     $rate = (float)($item['rate'] ?? 0);
                     $amount = (float)($item['amount'] ?? 0);
+                    $inventory_item_id = (int)($item['inventory_item_id'] ?? 0);
 
                     if (!empty($description) && $rate > 0) {
                         // Map old item types to new schema
                         $mappedItemType = ($item_type === 'base_service') ? 'service' :
                                          (($item_type === 'parts') ? 'part' : 'misc');
 
-                        $db->query(
-                            "INSERT INTO quotation_items_new (quotation_id, item_type, description, quantity, rate, amount)
-                             VALUES (?, ?, ?, ?, ?, ?)",
-                            [$quotation_id, $mappedItemType, $description, $quantity, $rate, $amount]
-                        );
+                        // Insert quotation item with inventory_item_id if available
+                        if ($inventory_item_id > 0) {
+                            $db->query(
+                                "INSERT INTO quotation_items_new (quotation_id, inventory_item_id, item_type, description, quantity, rate, amount)
+                                 VALUES (?, ?, ?, ?, ?, ?, ?)",
+                                [$quotation_id, $inventory_item_id, $mappedItemType, $description, $quantity, $rate, $amount]
+                            );
+                        } else {
+                            $db->query(
+                                "INSERT INTO quotation_items_new (quotation_id, item_type, description, quantity, rate, amount)
+                                 VALUES (?, ?, ?, ?, ?, ?)",
+                                [$quotation_id, $mappedItemType, $description, $quantity, $rate, $amount]
+                            );
+                        }
+
+                        // Deduct stock for inventory items
+                        if (($item_type === 'parts' || $item_type === 'part') && $inventory_item_id > 0) {
+                            $result = $db->query(
+                                "UPDATE inventory
+                                 SET current_stock = current_stock - ?, updated_at = NOW()
+                                 WHERE id = ? AND organization_id = ?",
+                                [$quantity, $inventory_item_id, $_SESSION['organization_id']]
+                            );
+
+                            if (!$result) {
+                                throw new Exception("Failed to update stock for item: {$description}");
+                            }
+                        }
                     }
                 }
             }

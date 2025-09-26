@@ -644,6 +644,25 @@ include '../includes/admin_head.php';
     <!-- JavaScript for dynamic form functionality -->
     <script src="../assets/js/material.js"></script>
     <script src="../assets/js/main.js"></script>
+
+    <!-- Datalist styling (limited but some basic theming possible) -->
+    <style>
+        /* Basic datalist styling - limited browser support */
+        datalist {
+            font-family: inherit;
+        }
+
+        /* Enhance input with datalist */
+        input[list] {
+            position: relative;
+        }
+
+        /* Style for validation states */
+        input.stock-warning {
+            border-color: #ef4444 !important;
+            box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.3);
+        }
+    </style>
     <?php if ($action === 'create' || $isStandalone): ?>
     <script>
         let itemCounter = 0;
@@ -664,13 +683,16 @@ include '../includes/admin_head.php';
             row.className = 'border-t border-blue-100';
             row.innerHTML = `
                 <td class="px-4 py-2">
-                    <select name="items[${itemCounter}][type]" class="w-full px-3 py-2 border border-blue-200 rounded text-sm">
+                    <select name="items[${itemCounter}][type]" class="item-type w-full px-3 py-2 border border-blue-200 rounded text-sm">
                         <option value="parts">Parts</option>
                         <option value="misc">Miscellaneous</option>
                     </select>
                 </td>
                 <td class="px-4 py-2">
-                    <input type="text" name="items[${itemCounter}][description]" class="w-full px-3 py-2 border border-blue-200 rounded text-sm" placeholder="Item description" required>
+                    <input type="text" name="items[${itemCounter}][description]" list="inventory-items-${itemCounter}" class="item-description w-full px-3 py-2 border border-blue-200 rounded text-sm" placeholder="Item description" autocomplete="off" required>
+                    <datalist id="inventory-items-${itemCounter}" class="inventory-datalist"></datalist>
+                    <input type="hidden" name="items[${itemCounter}][inventory_item_id]" class="inventory-item-id">
+                    <div class="stock-info text-xs text-blue-600 mt-1 hidden"></div>
                 </td>
                 <td class="px-4 py-2">
                     <input type="number" name="items[${itemCounter}][quantity]" step="0.01" min="1" value="1" class="item-quantity w-full px-3 py-2 border border-blue-200 rounded text-sm" required>
@@ -689,14 +711,148 @@ include '../includes/admin_head.php';
             `;
             tbody.appendChild(row);
 
-            // Add event listeners for calculation
+            // Get elements for this row
+            const typeSelect = row.querySelector('.item-type');
+            const descriptionInput = row.querySelector('.item-description');
             const quantityInput = row.querySelector('.item-quantity');
             const rateInput = row.querySelector('.item-rate');
+            const datalist = row.querySelector('.inventory-datalist');
+            const stockInfo = row.querySelector('.stock-info');
+            const inventoryItemId = row.querySelector('.inventory-item-id');
 
+            // Add event listeners for calculation
             quantityInput.addEventListener('input', calculateRowAmount);
             rateInput.addEventListener('input', calculateRowAmount);
 
+            // Add type change listener
+            typeSelect.addEventListener('change', function() {
+                toggleInventorySearch(row);
+            });
+
+            // Initialize inventory search for parts (default selection)
+            toggleInventorySearch(row);
+
+            // Add inventory search functionality
+            setupInventorySearch(descriptionInput, datalist, rateInput, stockInfo, inventoryItemId, quantityInput);
+
             itemCounter++;
+        }
+
+        function toggleInventorySearch(row) {
+            const typeSelect = row.querySelector('.item-type');
+            const descriptionInput = row.querySelector('.item-description');
+            const stockInfo = row.querySelector('.stock-info');
+            const rateInput = row.querySelector('.item-rate');
+            const inventoryItemId = row.querySelector('.inventory-item-id');
+            const datalist = row.querySelector('.inventory-datalist');
+
+            if (typeSelect.value === 'parts') {
+                descriptionInput.placeholder = 'Type to search inventory items...';
+                descriptionInput.style.borderColor = '#3b82f6';
+                // Load inventory items into datalist
+                loadInventoryItems(datalist);
+            } else {
+                descriptionInput.placeholder = 'Item description';
+                descriptionInput.style.borderColor = '#d1d5db';
+                stockInfo.classList.add('hidden');
+                stockInfo.textContent = '';
+                rateInput.value = '';
+                inventoryItemId.value = '';
+                // Clear datalist
+                datalist.innerHTML = '';
+            }
+        }
+
+        function setupInventorySearch(input, datalist, rateInput, stockInfo, inventoryItemId, quantityInput) {
+            let inventoryItems = {};
+
+            // When user selects from datalist or types a matching item
+            input.addEventListener('input', function() {
+                const selectedItemName = this.value.trim();
+                const selectedItem = inventoryItems[selectedItemName];
+
+                if (selectedItem) {
+                    // Auto-fill rate and show stock info
+                    rateInput.value = selectedItem.selling_price.toFixed(2);
+                    inventoryItemId.value = selectedItem.id;
+
+                    const stockClass = selectedItem.current_stock <= 0 ? 'text-red-600' :
+                                      selectedItem.current_stock <= 10 ? 'text-orange-600' : 'text-green-600';
+
+                    // Don't show stock info since it's already in datalist
+                    stockInfo.classList.add('hidden');
+
+                    // Store selected item for validation
+                    input.selectedItem = selectedItem;
+
+                    // Validate current quantity
+                    validateQuantity(selectedItem, quantityInput, stockInfo);
+
+                    // Trigger amount calculation
+                    calculateRowAmount({ target: rateInput });
+                } else {
+                    // Clear auto-filled data if not an inventory item
+                    inventoryItemId.value = '';
+                    input.selectedItem = null;
+                }
+            });
+
+            // Store reference to inventory items for this input
+            input.inventoryItems = inventoryItems;
+
+            // Validate quantity against stock
+            quantityInput.addEventListener('input', function() {
+                const selectedItem = input.selectedItem;
+                validateQuantity(selectedItem, quantityInput, stockInfo);
+            });
+        }
+
+        function loadInventoryItems(datalist) {
+            fetch('../api/inventory_search.php?q=')
+                .then(response => response.json())
+                .then(data => {
+                    datalist.innerHTML = '';
+                    const input = datalist.previousElementSibling;
+                    const inventoryItems = {};
+
+                    if (data.items && data.items.length > 0) {
+                        data.items.forEach(item => {
+                            const option = document.createElement('option');
+                            option.value = item.name;
+                            option.textContent = `${item.name} (Stock: ${item.current_stock} units) - ₹${item.selling_price.toFixed(2)}`;
+                            datalist.appendChild(option);
+
+                            // Store item data for later use
+                            inventoryItems[item.name] = item;
+                        });
+                    }
+
+                    // Update the inventory items reference
+                    if (input && input.inventoryItems) {
+                        Object.assign(input.inventoryItems, inventoryItems);
+                    }
+                })
+                .catch(error => {
+                    console.error('Failed to load inventory items:', error);
+                });
+        }
+
+
+        function validateQuantity(item, quantityInput, stockInfo) {
+            if (!item || !quantityInput.value) return;
+
+            const requestedQuantity = parseFloat(quantityInput.value) || 0;
+            const availableStock = item.current_stock;
+
+            if (requestedQuantity > availableStock) {
+                quantityInput.classList.add('stock-warning');
+                quantityInput.title = availableStock <= 0 ?
+                    `⚠ Out of Stock!` :
+                    `⚠ Insufficient Stock (Available: ${availableStock})`;
+            } else {
+                quantityInput.classList.remove('stock-warning');
+                quantityInput.title = '';
+            }
         }
 
         function removeItemRow(button) {
@@ -1024,8 +1180,45 @@ include '../includes/admin_head.php';
                 errors.push('Base service charge is required and must be greater than zero');
             }
 
+            // 5. Stock validation for parts items
+            const stockErrors = validateInventoryStock();
+            if (stockErrors.length > 0) {
+                errors.push(...stockErrors);
+            }
+
             // For standalone quotations, vehicle registration and email are optional
             // (walk-in customers may not have these details)
+
+            return errors;
+        }
+
+        function validateInventoryStock() {
+            const errors = [];
+            const currentTableBody = document.getElementById(tableBody);
+
+            if (!currentTableBody) return errors;
+
+            const rows = currentTableBody.querySelectorAll('tr');
+
+            rows.forEach((row, index) => {
+                const typeSelect = row.querySelector('.item-type');
+                const descriptionInput = row.querySelector('.item-description');
+                const quantityInput = row.querySelector('.item-quantity');
+                const inventoryItemId = row.querySelector('.inventory-item-id');
+
+                if (typeSelect && typeSelect.value === 'parts' && inventoryItemId && inventoryItemId.value) {
+                    const selectedItem = descriptionInput ? descriptionInput.selectedItem : null;
+                    const requestedQuantity = parseFloat(quantityInput?.value || 0);
+
+                    if (selectedItem && requestedQuantity > selectedItem.current_stock) {
+                        if (selectedItem.current_stock <= 0) {
+                            errors.push(`Item "${selectedItem.name}" is out of stock`);
+                        } else {
+                            errors.push(`Insufficient stock for "${selectedItem.name}". Available: ${selectedItem.current_stock}, Requested: ${requestedQuantity}`);
+                        }
+                    }
+                }
+            });
 
             return errors;
         }
